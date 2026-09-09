@@ -113,3 +113,9 @@ Result: 109 short paths removed, 90 remaining paths, 196 cubics. Finite coordina
 Added tools/neighbor_curves.py. It joins paths by tangent continuity, fits whole chains with one cubic, and ranks proposals using nearby smooth-edge alignment and how concentrated residual deviations are. No eyelid coordinates or semantic masks. Four candidates pass on Dedede; comparison at demos/neighbor-curves/ uses pink proposed curves and cyan replaced contours.
 
 This is a proposal experiment, not an accepted automatic repair. Visual checks of the first two SVG renders show that chain selection can cross an intended feature boundary. Branches remain at their old locations when a curve moves, producing detached stubs. Nearby agreement alone does not reliably establish the intended eyelid contour. Native-source evidence, branch reattachment, crossing validation, and batch evaluation remain pending. Do not apply these proposals to final textures.
+
+## Layered eye-shape experiment (2026-09-09)
+
+Added tools/eye_shapes.py. Dark connected components and adjacent neutral bright components propose eye regions without hand-selected coordinates. Partial boundary ellipse fits model outer eyes and irises. Small adjacent white components propose highlights. An asymmetric quadratic fit estimates the upper envelope, discounting downward detours, and clips the layered vector shapes beneath that eyelid.
+
+Detected both eyes on the saved StarSample portrait. Overlay and flat vector-only reconstruction are at demos/eye-shapes/. SVGs rendered and inspected; eyelid sweeps avoid highlight dips, but ellipse fits distort the eyes and highlight detection includes small false components. Layer ordering is assumed, not inferred. This is a color-based eye experiment, not a general automatic reconstruction engine. Original image and mouth remain unchanged. No shading reconstruction, other-asset validation, or automatic model acceptance yet.
