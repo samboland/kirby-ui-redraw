@@ -195,3 +195,7 @@ Runner now supports --resume, validates chain/settings/source hashes and complet
 The first 1024x1024 cloud texture completed at 4096x4096 after 762.01 seconds. Sam requested a 2048-pixel cap. Paused the second 1024 texture, stopped the old runner, and resumed with --max-output 2048 --tile-size 256. The 16 completed outputs, including the 4096 cloud, remain unchanged.
 
 Runner chooses the largest integer scale up to 4 that fits the longest side under 2048. Native 1024 assets now use one 2x pass. New runs use explicit 256 tiles instead of automatic sizing. Source pipeline remains unchanged; overrides are recorded in report.json. Active monitored exec session is now 94201, backend still port 8767/PID 10608. Resume with previous command plus --max-output 2048 --tile-size 256. Need verify the second large texture completes and measure its runtime before giving a revised ETA.
+
+## Live batch comparison (2026-09-09)
+Added tools/batch_compare.html and tools/prepare_batch_compare.py. Viewer: demos/level1-batch/compare.html. Reads completed outputs from the live report every five seconds and compares byte-identical staged originals at matched display dimensions. Includes alpha-only view, background selection, zoom, synchronized scrolling, and filename filtering. Browser loaded the selected star texture and live report. Original hashes and completed output presence verified. Interactive controls and in-game behavior remain untested. Batch processing is unchanged. Next: review alpha differences before changing processing.
+
