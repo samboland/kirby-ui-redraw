@@ -116,7 +116,11 @@ def main():
         old = copy.deepcopy(model)
         old['paths'] = [model['paths'][i] for i in proposal['path_ids']]
         write_svg(old, out/f'before-{rank}.svg')
-        old_svg = (out/f'before-{rank}.svg').read_text().replace('stroke="black"', 'stroke="#00dcff"')
+        original_svg = (out/f'before-{rank}.svg').read_text()
+        group = original_svg[original_svg.index('<g '):original_svg.index('</g>')+4]
+        outline = group.replace('stroke="black"', 'stroke="#10232b" stroke-dasharray="7 4"').replace('stroke-width="1"', 'stroke-width="5"')
+        cyan = group.replace('stroke="black"', 'stroke="#00ffff" stroke-dasharray="7 4"').replace('stroke-width="1"', 'stroke-width="3"')
+        old_svg = original_svg[:original_svg.index('<g ')] + outline + cyan + '</svg>'
         cards.append(f'<article><h2>Automatic proposal {rank}</h2><p>Nearby agreement {proposal["support"]:.0%}; maximum shift {proposal["max_shift"]:.1f}px</p><div class="stack"><img src="../hybrid-contours/mild/input.png">{svg}<div class="before">{old_svg}</div></div></article>')
     (out/'index.html').write_text('''<!doctype html><meta charset="utf-8"><title>Nearby-edge proposals</title><style>body{background:#242832;color:white;font:16px system-ui;margin:24px}main{display:grid;grid-template-columns:1fr 1fr;gap:20px}.stack{position:relative;background:white}.stack img{display:block;width:100%;opacity:.7}.stack svg{position:absolute;inset:0;width:100%;height:100%}.before{display:var(--before,block)}nav{position:sticky;top:0;background:#242832;padding:12px;z-index:2}</style><h1>Nearby-edge proposals</h1><p>Pink: proposed network. Cyan: replaced contour. Ranked automatically across the whole image, without eyelid coordinates.</p><nav><label><input type="checkbox" checked onchange="document.body.style.setProperty('--before',this.checked?'block':'none')">Show previous contour</label></nav><p>Proposals only. Branches are not reattached after contour replacement. The score is a heuristic, not confidence. Native-source evidence and crossing checks are not implemented.</p><main>'''+(''.join(cards) or '<p>No candidates passed.</p>')+'</main>', encoding='utf-8')
     print(json.dumps([{k:v for k,v in p.items() if k!='cubic'} for p in proposals[:6]], indent=2))
