@@ -79,3 +79,13 @@ The comparison uses the same smoothed StarSample input. Settings: spatial/color 
 Visual review found useful eye, beak, and mouth edges, but also false gradient boundaries, especially with stronger filtering. Edge counts alone are not a quality score. Next: review overlays with Sam before choosing region clustering or contour fitting. Browser: assets/kirby/demos/mean-shift/index.html. This is not a final replacement texture or a completed vectorization method.
 
 Sam preferred the unfiltered control edge map. Added alpha-boundary Canny edges to that control without modifying the existing internal edges. Exported white-background and transparent black line-art PNGs, with a cyan/magenta diagnostic overlay at demos/mean-shift/line-art.html. Verified every original control edge and alpha-edge pixel remains in the union. Visually reviewed; existing gaps and pixel-scale irregularities remain. This is a raster edge map, not vector paths.
+
+## Region graph prototype (2026-09-08)
+
+Added tools/region_graph.py. It thins the accepted control-plus-alpha line art, detects endpoints, proposes short tangent-aligned connections with crossing checks, and connects crop-truncated contours to the image border. These are heuristic proposals, not semantic understanding or confidence probabilities.
+
+Current output: 48 initial endpoints; 24 interior repair proposals and 13 crop connections; 10 unmatched endpoints; 24 flood-filled regions of at least 12 pixels, plus 29 tiny regions retained in the label data. Proposed repairs appear green. Random region colors and median-color fills are diagnostic only.
+
+Outputs at assets/kirby/demos/region-graph include graph.json, region-labels.npy, repaired line art, numbered regions, and a simplified shared-arc SVG. Junctions remain fixed during polyline simplification. Curve fitting and validation of vector-region topology remain pending; the filled regions currently use raster flood fill, not the simplified SVG.
+
+Validation: all skeleton pixels remain present after repair; labels never extend outside alpha; region areas sum to the available interior. Visually checked overlays and regions; some unresolved gaps, tiny slivers, and ambiguous junctions remain. No shading reconstruction was attempted. Get Sam's region review before gradient representation or deformation.
