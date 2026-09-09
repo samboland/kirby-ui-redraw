@@ -1,0 +1,12 @@
+/assets/
+/work/
+/.venv/
+__pycache__/
+*.pyc
+*.iso
+*.wbfs
+*.rvz
+*.nsp
+*.xci
+*.dll
+*.exe
