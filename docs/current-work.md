@@ -51,3 +51,7 @@ Added Mean Curvature Blur (GIMP) to the installed chaiNNer 0.25.1 Blur group. It
 Source and update-safe reinstall instructions are under integrations/chainner. The installer backs up a differing previous node. chaiNNer updates can remove the installed copy, requiring reinstallation.
 
 Verified node registration, GEGL execution, exact alpha preservation when enabled, zero bypass, grayscale/RGB/RGBA shapes, and processing of Sam's current portrait. The running application's node palette remains unverified until Sam saves the chain and restarts chaiNNer. No running session was interrupted.
+
+## Additional test assets (2026-09-08)
+
+Sam reports StarSample 2.0 HQ gives good portrait results, and Separate Alpha fixed the visible fringe. Prepared ten additional original assets at assets/kirby/demos/test-set-02/inputs, with a sibling results folder and browser contact sheet. The set covers tiny icons, white transparent edges, metallic numerals, faces, detailed characters, repeating curves, and Sword/Ice cards. All inputs are verified byte-identical copies. Their upscales remain untested. Recreate the set with tools/prepare_test_set.py.
