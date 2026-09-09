@@ -161,3 +161,9 @@ Two geometry tests pass (hole/angular/exterior membership and rotation/translati
 Replaced the wedge-minus-offset-ellipse mask with one closed band path: outer elliptical arc, direct join, reversed inner elliptical arc, closing join. Inner endpoints are derived relative to the offset inner center, so no radial cut passes through its center gap. Render inspected; the additional notch is removed. Direct joins can still form corners; they are not inferred eyelid/beak curves.
 
 The fit still initializes from the earlier radial-sector objective. Current band IoU is recomputed from the final polygon; historical radial IoU is separate in fit.json. Three sector tests pass, including the two-arc/no-mask regression. Re-optimization for the new band model and source-fitted occluder joins remain untested. Source artwork is unchanged.
+
+## Enlarged overlay review and independent arc refit (2026-09-09)
+
+Reviewed both eye overlays enlarged with Inkscape exports and image viewer. The prior direct joins had not repaired the oversized white patch: the inner ellipse was too small and the white band covered the iris. Added independent ellipse fits to the left/right boundaries of the connected white island. This improves the larger eye's inner edge. The smaller eye refit is visibly worse; a pixel-overlap comparison retains its previous paired-arc candidate automatically.
+
+Added enlarged eye overlays to the comparison page. Refit and previous-band IoUs are recorded separately. Both final enlarged overlays inspected. Larger-eye endpoint cuts still miss some white near the beak; smaller-eye tips and thin boundary remain imperfect. This is an improvement, not a complete fidelity fix. Three existing sector tests pass; the row-based arc fitter is not validated on other assets or nonvertical bands.

@@ -78,6 +78,39 @@ def svg_sector(v, identifier):
     return f'<path id="band{identifier}" d="{path}" fill="#f5f5f5"/>'
 
 
+def fit_white_band(mask):
+    """Fit independent ellipse arcs to both sides of the observed white island."""
+    rows=np.flatnonzero(mask.any(axis=1))
+    left=np.array([[np.flatnonzero(mask[y])[0],y] for y in rows],float)
+    right=np.array([[np.flatnonzero(mask[y])[-1],y] for y in rows],float)
+    def fitted_arc(points):
+        count=len(points)
+        evidence=points[int(count*.12):int(count*.88)]
+        e=cv2.fitEllipse(evidence.astype('float32'))
+        center,size,angle=e
+        a,b=np.asarray(size)/2
+        theta=np.deg2rad(angle)
+        c,s=np.cos(theta),np.sin(theta)
+        local=(points-np.asarray(center))@np.array([[c,-s],[s,c]])
+        angles=np.unwrap(np.arctan2(local[:,1]/b,local[:,0]/a))
+        # Use nearest points on the fitted ellipse for the observed endpoints.
+        grid=np.linspace(0,2*np.pi,8192,endpoint=False)
+        candidates=np.column_stack((a*np.cos(grid),b*np.sin(grid)))@np.array([[c,s],[-s,c]])+center
+        start=grid[np.argmin(np.linalg.norm(candidates-points[0],axis=1))]
+        end=grid[np.argmin(np.linalg.norm(candidates-points[-1],axis=1))]
+        sweep=1 if angles[-1]>angles[0] else 0
+        delta=(end-start)%(2*np.pi) if sweep else -((start-end)%(2*np.pi))
+        def point(t):
+            return np.array([a*np.cos(t)*c-b*np.sin(t)*s,a*np.cos(t)*s+b*np.sin(t)*c])+center
+        arcpoints=np.array([point(t) for t in np.linspace(start,start+delta,1024)])
+        return dict(ellipse=e,a=float(a),b=float(b),angle=float(angle),start=arcpoints[0],end=arcpoints[-1],sweep=sweep,large=int(abs(delta)>np.pi),points=arcpoints)
+    outer,inner=fitted_arc(right),fitted_arc(left)
+    def xy(point):return f'{point[0]} {point[1]}'
+    path=f'M {xy(outer["start"])} A {outer["a"]} {outer["b"]} {outer["angle"]} {outer["large"]} {outer["sweep"]} {xy(outer["end"])} L {xy(inner["end"])} A {inner["a"]} {inner["b"]} {inner["angle"]} {inner["large"]} {1-inner["sweep"]} {xy(inner["start"])} Z'
+    polygon=np.vstack((outer['points'],inner['points'][::-1]))
+    return path,polygon,dict(outer=outer['ellipse'],inner=inner['ellipse'])
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--candidates',type=Path,nargs='*',help='Render the best saved fit per component, without rerunning optimization.')
@@ -105,15 +138,29 @@ def main():
             report={k:v for k,v in chosen.items() if k not in ('component','parameters')}
         else:
             parameters,report=fit_sector(island)
-        _,polygon=band_geometry(parameters)
+        path,polygon,arc_fit=fit_white_band(island)
+        old_path,old_polygon=band_geometry(parameters)
+        def overlap(candidate):
+            raster=np.zeros(island.shape,'uint8')
+            cv2.fillPoly(raster,[np.round(candidate*256).astype('int32')],1,shift=8)
+            predicted=raster>0
+            return float((predicted & island).sum()/max((predicted | island).sum(),1))
+        refit_iou,previous_iou=overlap(polygon),overlap(old_polygon)
+        use_refit=refit_iou>=previous_iou
+        if not use_refit:
+            path,polygon=old_path,old_polygon
         raster=np.zeros(island.shape,'uint8')
         cv2.fillPoly(raster,[np.round(polygon*256).astype('int32')],1,shift=8)
         prediction=raster>0
         report['radial_fit_iou']=report.get('radial_fit_iou',report['iou'])
         report['iou']=float((prediction & island).sum()/max((prediction | island).sum(),1))
-        report['geometry']='paired elliptical arcs with direct endpoint joins'
+        report['geometry']='independent ellipse arcs fitted to white-island sides' if use_refit else 'previous paired arcs retained'
+        report['refit_iou']=refit_iou
+        report['previous_band_iou']=previous_iou
+        report['arc_fit']=arc_fit
+        report['review_bounds']=[max(0,int(ws[max(ids,key=lambda j:ws[j,4]),0])-15),max(0,int(ws[max(ids,key=lambda j:ws[j,4]),1])-20),int(ws[max(ids,key=lambda j:ws[j,4]),2])+30,int(ws[max(ids,key=lambda j:ws[j,4]),3])+40]
         results.append(dict(component=i,parameters=parameters.tolist(),**report))
-        sectors.append(svg_sector(parameters,i))
+        sectors.append(f'<path id="band{i}" d="{path}" fill="#f5f5f5"/>')
         contours,_=cv2.findContours(island.astype('uint8'),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
         for contour in contours:
             d='M'+' L'.join(f'{x},{y}' for x,y in contour[:,0,:])+' Z'
@@ -124,7 +171,19 @@ def main():
     original='<image href="../hybrid-contours/mild/input.png" width="512" height="512"/>'
     (out/'overlay.svg').write_text(header+original+'<g opacity=".8">'+''.join(sectors)+'</g>'+''.join(evidence)+'</svg>')
     (out/'fit.json').write_text(json.dumps(results,indent=2))
+    zooms=[]
+    for result in results:
+        x,y,width,height=result['review_bounds']
+        zoom_header=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {width} {height}">'
+        name=f'eye-{result["component"]}-detail.svg'
+        (out/name).write_text(zoom_header+original+'<g opacity=".8">'+''.join(sectors)+'</g>'+''.join(evidence)+'</svg>')
+        zooms.append(f'<section><h2>Enlarged eye {result["component"]}</h2><object data="{name}"></object></section>')
     (out/'index.html').write_text('''<!doctype html><meta charset="utf-8"><title>Annular eye sectors</title><style>body{background:#242832;color:white;font:16px system-ui;margin:24px}main{display:grid;grid-template-columns:1fr 1fr;gap:24px}object{width:100%;aspect-ratio:1;background:#557b91}</style><h1>Annular sectors for the eyes</h1><p>White: fitted sectors. Pink: observed white-island boundary. Original eyes remain visible beneath the overlay.</p><main><section><h2>Fit over original</h2><object data="overlay.svg"></object></section><section><h2>Vector sclera bands</h2><object data="sectors.svg"></object></section></main><p>Each band now joins its outer and inner elliptical arcs directly. The radial mask that caused the notch is removed. Parameters still come from the earlier sector fit; reported overlap is recomputed for the new band. This experiment fits sclera bands; irises and highlights remain original in the overlay. The mouth is unchanged.</p><p>Pixel intersection-over-union: '''+'; '.join(f'eye {r["component"]}: {r["iou"]:.1%}' for r in results)+'. Overlap is a diagnostic, not an acceptance decision.</p>',encoding='utf-8')
 
+
+    page=(out/'index.html').read_text(encoding='utf-8')
+    page=page.replace('</main>', '</main><h2>Alignment review</h2><main>'+''.join(zooms)+'</main>')
+    page=page.replace('Parameters still come from the earlier sector fit; reported overlap is recomputed for the new band.', 'Independent inner and outer arc fits are compared against the previous band. The better pixel-overlap candidate is retained. End joins still need refinement.')
+    (out/'index.html').write_text(page,encoding='utf-8')
 
 if __name__=='__main__':main()
