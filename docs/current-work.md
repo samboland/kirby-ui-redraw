@@ -43,3 +43,11 @@ Next: review the local demos with Sam, tune vector paths where needed, and evalu
 Sam's preferred cleanup is oversampling, GIMP Mean Curvature Blur at 1-3 iterations, then final reduction. Added tools/curvature_demos.py using GIMP 3's actual bundled GEGL executable. It compares iterations 0-3 at 8x and 12x native, each reduced to 4x. Traced original alpha is restored after filtering. The browser comparison is assets/kirby/demos/curvature.html.
 
 Curvature validation: all 24 outputs have the expected final dimensions, identical alpha to their unfiltered control, and nonzero filtered RGB changes. The 1-3 iteration differences are subtle after reduction; 12x processing reduces their effect further than 8x. Curvature comparison crops were visually reviewed. Eighteen automated tests pass. In-game behavior remains untested.
+
+## chaiNNer custom node (2026-09-08)
+
+Added Mean Curvature Blur (GIMP) to the installed chaiNNer 0.25.1 Blur group. It calls GIMP's actual GEGL operation through 16-bit PNG transfer. Default iterations: 2. Optional Preserve Alpha restores input alpha. Zero iterations bypasses GEGL.
+
+Source and update-safe reinstall instructions are under integrations/chainner. The installer backs up a differing previous node. chaiNNer updates can remove the installed copy, requiring reinstallation.
+
+Verified node registration, GEGL execution, exact alpha preservation when enabled, zero bypass, grayscale/RGB/RGBA shapes, and processing of Sam's current portrait. The running application's node palette remains unverified until Sam saves the chain and restarts chaiNNer. No running session was interrupted.
