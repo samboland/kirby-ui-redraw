@@ -155,3 +155,9 @@ Demo: demos/annular-eyes/. Original eyes remain beneath the fitted white bands, 
 Best observed pixel IoU: larger island 93.54%, smaller island 82.65%. The demo retains best saved candidates across two parameter experiments using --candidates work/annular-first-fit.json assets/kirby/demos/annular-eyes/fit.json. Saved candidates are specific to this source; the reuse option does not verify source identity. Optimization hit its iteration limits; convergence is not claimed. Approximate overlap is not a fidelity approval.
 
 Two geometry tests pass (hole/angular/exterior membership and rotation/translation). Overlay rendered and inspected. Sectors follow both white islands substantially better than the earlier missing-eye output, though endpoint and narrow-strip errors remain. Other assets, generalized classification, and shader reconstruction are untested.
+
+## Remove radial-cut notch (2026-09-09)
+
+Replaced the wedge-minus-offset-ellipse mask with one closed band path: outer elliptical arc, direct join, reversed inner elliptical arc, closing join. Inner endpoints are derived relative to the offset inner center, so no radial cut passes through its center gap. Render inspected; the additional notch is removed. Direct joins can still form corners; they are not inferred eyelid/beak curves.
+
+The fit still initializes from the earlier radial-sector objective. Current band IoU is recomputed from the final polygon; historical radial IoU is separate in fit.json. Three sector tests pass, including the two-arc/no-mask regression. Re-optimization for the new band model and source-fitted occluder joins remain untested. Source artwork is unchanged.

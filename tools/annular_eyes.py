@@ -53,19 +53,29 @@ def fit_sector(mask):
                            converged=bool(result.success), inner_containment=float(np.hypot(result.x[5],result.x[6])+result.x[7]))
 
 
-def svg_sector(v, identifier):
+def band_geometry(v):
     cx,cy,a,b,rotation,dx,dy,scale,middle,span = map(float,v)
     c,s = np.cos(rotation),np.sin(rotation)
-    def point(theta):
+    def point(theta, inner=False):
         x,y=a*np.cos(theta),b*np.sin(theta)
+        if inner:
+            x,y=x*scale+a*dx,y*scale+b*dy
         return [cx+x*c-y*s,cy+x*s+y*c]
-    p,q=point(middle-span/2),point(middle+span/2)
+    start,end=middle-span/2,middle+span/2
+    angles=np.linspace(start,end,1024)
+    inner_angles=np.unwrap(np.arctan2(np.sin(angles)-dy,np.cos(angles)-dx))
+    inner_start,inner_end=inner_angles[0],inner_angles[-1]
+    p,q=point(start),point(end)
+    ip,iq=point(inner_start,True),point(inner_end,True)
     angle=np.rad2deg(rotation)
-    wedge=f'M {cx} {cy} L {p[0]} {p[1]} A {a} {b} {angle} {int(span>np.pi)} 1 {q[0]} {q[1]} Z'
-    icx,icy=cx+a*dx*c-b*dy*s,cy+a*dx*s+b*dy*c
-    outer=f'<ellipse cx="{cx}" cy="{cy}" rx="{a}" ry="{b}" transform="rotate({angle} {cx} {cy})"'
-    inner=f'<ellipse cx="{icx}" cy="{icy}" rx="{a*scale}" ry="{b*scale}" transform="rotate({angle} {icx} {icy})"'
-    return f'<defs><mask id="ring{identifier}" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">{outer} fill="white"/>{inner} fill="black"/></mask></defs><path d="{wedge}" fill="#f5f5f5" mask="url(#ring{identifier})"/>'
+    path=f'M {p[0]} {p[1]} A {a} {b} {angle} {int(span>np.pi)} 1 {q[0]} {q[1]} L {iq[0]} {iq[1]} A {a*scale} {b*scale} {angle} {int(inner_end-inner_start>np.pi)} 0 {ip[0]} {ip[1]} Z'
+    polygon=np.array([point(t) for t in angles]+[point(t,True) for t in np.linspace(inner_end,inner_start,1024)])
+    return path,polygon
+
+
+def svg_sector(v, identifier):
+    path,_=band_geometry(v)
+    return f'<path id="band{identifier}" d="{path}" fill="#f5f5f5"/>'
 
 
 def main():
@@ -95,6 +105,13 @@ def main():
             report={k:v for k,v in chosen.items() if k not in ('component','parameters')}
         else:
             parameters,report=fit_sector(island)
+        _,polygon=band_geometry(parameters)
+        raster=np.zeros(island.shape,'uint8')
+        cv2.fillPoly(raster,[np.round(polygon*256).astype('int32')],1,shift=8)
+        prediction=raster>0
+        report['radial_fit_iou']=report.get('radial_fit_iou',report['iou'])
+        report['iou']=float((prediction & island).sum()/max((prediction | island).sum(),1))
+        report['geometry']='paired elliptical arcs with direct endpoint joins'
         results.append(dict(component=i,parameters=parameters.tolist(),**report))
         sectors.append(svg_sector(parameters,i))
         contours,_=cv2.findContours(island.astype('uint8'),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
@@ -107,7 +124,7 @@ def main():
     original='<image href="../hybrid-contours/mild/input.png" width="512" height="512"/>'
     (out/'overlay.svg').write_text(header+original+'<g opacity=".8">'+''.join(sectors)+'</g>'+''.join(evidence)+'</svg>')
     (out/'fit.json').write_text(json.dumps(results,indent=2))
-    (out/'index.html').write_text('''<!doctype html><meta charset="utf-8"><title>Annular eye sectors</title><style>body{background:#242832;color:white;font:16px system-ui;margin:24px}main{display:grid;grid-template-columns:1fr 1fr;gap:24px}object{width:100%;aspect-ratio:1;background:#557b91}</style><h1>Annular sectors for the eyes</h1><p>White: fitted sectors. Pink: observed white-island boundary. Original eyes remain visible beneath the overlay.</p><main><section><h2>Fit over original</h2><object data="overlay.svg"></object></section><section><h2>Vector sclera bands</h2><object data="sectors.svg"></object></section></main><p>Each band has rotated elliptical boundaries, an offset inner ellipse, and angular endpoints. Parameters fit the white island directly. This experiment fits sclera bands; irises and highlights remain original in the overlay. The mouth is unchanged.</p><p>Pixel intersection-over-union: '''+'; '.join(f'eye {r["component"]}: {r["iou"]:.1%}' for r in results)+'. Overlap is a diagnostic, not an acceptance decision.</p>',encoding='utf-8')
+    (out/'index.html').write_text('''<!doctype html><meta charset="utf-8"><title>Annular eye sectors</title><style>body{background:#242832;color:white;font:16px system-ui;margin:24px}main{display:grid;grid-template-columns:1fr 1fr;gap:24px}object{width:100%;aspect-ratio:1;background:#557b91}</style><h1>Annular sectors for the eyes</h1><p>White: fitted sectors. Pink: observed white-island boundary. Original eyes remain visible beneath the overlay.</p><main><section><h2>Fit over original</h2><object data="overlay.svg"></object></section><section><h2>Vector sclera bands</h2><object data="sectors.svg"></object></section></main><p>Each band now joins its outer and inner elliptical arcs directly. The radial mask that caused the notch is removed. Parameters still come from the earlier sector fit; reported overlap is recomputed for the new band. This experiment fits sclera bands; irises and highlights remain original in the overlay. The mouth is unchanged.</p><p>Pixel intersection-over-union: '''+'; '.join(f'eye {r["component"]}: {r["iou"]:.1%}' for r in results)+'. Overlap is a diagnostic, not an acceptance decision.</p>',encoding='utf-8')
 
 
 if __name__=='__main__':main()

@@ -1,9 +1,18 @@
 import unittest
 import numpy as np
-from annular_eyes import membership
+from annular_eyes import membership, band_geometry, svg_sector
 
 
 class SectorTests(unittest.TestCase):
+    def test_offset_band_has_two_arcs_without_radial_mask(self):
+        model = [50,50,20,30,.4,.35,-.35,.37,2.87,4.21]
+        path,polygon = band_geometry(model)
+        self.assertEqual(path.count(' A '),2)
+        self.assertEqual(path.count(' L '),1)
+        self.assertTrue(path.endswith(' Z'))
+        self.assertTrue(np.isfinite(polygon).all())
+        self.assertNotIn('<mask',svg_sector(model,1))
+
     def test_hole_exterior_and_angular_cut(self):
         model = [50,50,20,30,0,0,0,.5,0,np.pi]
         points = np.array([[65,50],[50,50],[35,50],[75,50]])
