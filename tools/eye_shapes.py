@@ -7,11 +7,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image
+from scipy.optimize import minimize
 
 
-def ellipse(mask, lid=None, return_candidates=False):
+def ellipse(mask, lid=None, return_candidates=False, exposed_points=None):
     contours, _ = cv2.findContours(mask.astype('uint8'), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     points = max(contours, key=cv2.contourArea)[:, 0, :]
+    if exposed_points is not None:
+        points = exposed_points
     if lid is not None:
         left, right, coef = lid
         t = (points[:, 0]-left)/max(right-left, 1)
@@ -48,9 +51,15 @@ def ellipse(mask, lid=None, return_candidates=False):
         # A short arc cannot strongly constrain hidden continuation.
         bins = np.floor((np.arctan2(normalized[:, 1], normalized[:, 0])+np.pi)*12/(2*np.pi)).astype(int)%12
         coverage = len(np.unique(bins[inliers]))
-        if coverage < 5:
+        if coverage < (3 if exposed_points is not None else 5):
             continue
-        score = float(np.minimum(1.5, distance).sum()+outside_penalty.sum()*4)
+        if exposed_points is not None:
+            # Every selected outer-arc point counts. No capped loss can discard this edge.
+            if np.quantile(distance, .95) > 2:
+                continue
+            score = float(np.mean(distance**2)*len(points))
+        else:
+            score = float(np.minimum(1.5, distance).sum()+outside_penalty.sum()*4)
         ranked.append((score, e))
     if not ranked:
         raise ValueError('No sufficiently supported truncated ellipse')
@@ -73,8 +82,8 @@ def ellipse_level(e, points):
     return (((points-center)@rotation.T/(np.asarray(size)/2))**2).sum(axis=1)
 
 
-def joint_ellipses(whole, pupil, lid):
-    outers = ellipse(whole, lid, True)
+def joint_ellipses(whole, pupil, lid, outer_points=None):
+    outers = ellipse(whole, lid, True) if outer_points is None else ellipse(whole, lid, True, outer_points)
     irises = ellipse(pupil, lid, True)
     best = None
     rejected = 0
@@ -91,10 +100,53 @@ def joint_ellipses(whole, pupil, lid):
                 continue
             best = (score, outer, iris)
     if best is None:
-        raise ValueError('No supported nested ellipse pair; retain the source instead')
+        if outer_points is None:
+            raise ValueError('No supported nested ellipse pair; retain the source instead')
+        # Keep the measured sclera fixed and refit the iris under containment.
+        outer = outers[0][1]
+        contour, _ = cv2.findContours(pupil.astype('uint8'), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        evidence = max(contour, key=cv2.contourArea)[:, 0, :].astype(float)
+        left, right, coef = lid
+        t = (evidence[:, 0]-left)/(right-left)
+        evidence = evidence[evidence[:, 1] > coef[0]+coef[1]*t+coef[2]*t*t+3]
+        def unpack(v):
+            return ((v[0], v[1]), (v[2], v[3]), v[4])
+        def objective(v):
+            residual = np.sqrt(ellipse_level(unpack(v), evidence))-1
+            return float(np.mean(np.minimum((residual*min(v[2:4])/2)**2, 9)))
+        c, size, angle = irises[0][1]
+        initial = [*outer[0], outer[1][0]*.6, outer[1][1]*.6, outer[2]]
+        extent = max(outer[1])
+        bounds = [(outer[0][0]-extent, outer[0][0]+extent), (outer[0][1]-extent, outer[0][1]+extent), (6, extent), (6, extent), (-360, 360)]
+        fit = minimize(objective, initial, method='SLSQP', bounds=bounds,
+                       constraints={'type':'ineq', 'fun':lambda v: 1-1e-4-ellipse_level(outer, boundary(unpack(v), 512))},
+                       options={'maxiter':300, 'ftol':1e-8})
+        if not fit.success or ellipse_level(outer, boundary(unpack(fit.x), 32768)).max() > 1:
+            raise ValueError('Constrained iris refit failed; retain source')
+        best = (float(fit.fun), outer, unpack(fit.x))
     dense_max = float(ellipse_level(best[1], boundary(best[2], 32768)).max())
     assert dense_max <= 1, 'Dense containment validation failed'
     return best[1], best[2], dict(outer_candidates=len(outers), iris_candidates=len(irises), rejected_pairs=rejected, maximum_iris_level=dense_max, constraint='full ellipse containment sampled at 32768 points')
+
+
+def outer_white_arc(sclera, pupil, hsv):
+    contours, _ = cv2.findContours(sclera.astype('uint8'), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    points = max(contours, key=cv2.contourArea)[:, 0, :]
+    # Keep the white/blue interface, excluding the white/dark iris and white/yellow beak interfaces.
+    blue = ((hsv[:, :, 0] >= 90) & (hsv[:, :, 0] <= 125) & (hsv[:, :, 1] > 70)).astype('uint8')
+    near_blue = cv2.dilate(blue, np.ones((5, 5), 'uint8')) > 0
+    near_iris = cv2.dilate(pupil.astype('uint8'), np.ones((3, 3), 'uint8')) > 0
+    x, y = points.T
+    selected = points[near_blue[y, x] & ~near_iris[y, x]]
+    if len(selected):
+        runs = list(np.split(selected, np.flatnonzero(np.linalg.norm(np.diff(selected, axis=0), axis=1) > 3)+1))
+        if len(runs) > 1 and np.linalg.norm(runs[-1][-1]-runs[0][0]) <= 3:
+            runs[0] = np.vstack((runs[-1], runs[0]))
+            runs.pop()
+        selected = max(runs, key=len)
+    if len(selected) < 12:
+        raise ValueError('Not enough isolated white/blue outer arc evidence')
+    return selected
 
 
 def element(e, fill):
@@ -146,7 +198,7 @@ def eyelid_band(rgb, hsv, left, right, coef, height):
 
 def main():
     root = Path(__file__).resolve().parents[1]/'assets/kirby/demos'
-    out = root/'truncated-eyes'
+    out = root/'white-arc-fit'
     out.mkdir(exist_ok=True)
     rgba = np.asarray(Image.open(root/'hybrid-contours/mild/input.png').convert('RGBA'))
     rgb, alpha = rgba[:, :, :3], rgba[:, :, 3]
@@ -154,7 +206,7 @@ def main():
     hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
     dark = ((hsv[:, :, 2] < 115) & (alpha > 128)).astype('uint8')
     n, labels, stats, _ = cv2.connectedComponentsWithStats(dark)
-    models, markup = [], []
+    models, markup, evidence_marks, failures = [], [], [], []
     for i in range(1, n):
         x, y, width, height, area = map(int, stats[i])
         if area < w*h*.002 or not .35 < width/height < 1.6 or area/(width*height) < .3:
@@ -200,7 +252,18 @@ def main():
             residual = top-design@coef
             weights = np.where(residual > 0, .12, .88)
         left, right = float(xs[0]), float(xs[-1])
-        outer, iris, joint_info = joint_ellipses(whole, pupil, (left, right, coef))
+        outer_points = outer_white_arc(sclera, pupil, hsv)
+        evidence_marks.extend(f'<circle cx="{px}" cy="{py}" r=".8" fill="#00ff80"/>' for px, py in outer_points)
+        try:
+            outer, iris, joint_info = joint_ellipses(whole, pupil, (left, right, coef), outer_points)
+            # A fitted eye must cover its observed white island, not just a tiny arc.
+            yy, xx = np.where(sclera)
+            if np.mean(ellipse_level(outer, np.column_stack((xx, yy))) > 1.08) > .05:
+                raise ValueError('Ellipse misses the observed white island')
+        except ValueError as error:
+            failures.append(dict(component=i, reason=str(error), selected_points=len(outer_points)))
+            continue
+        joint_info['outer_arc_points'] = outer_points.tolist()
         y0, y1 = float(coef[0]), float(coef.sum())
         control_y = float(coef[0]+coef[1]/2)
         lid = f'M {left} {y0} Q {(left+right)/2} {control_y} {right} {y1}'
@@ -223,10 +286,13 @@ def main():
     (out/'shapes.svg').write_text(header+shapes+'</svg>')
     lines = ''.join(f'<path d="{m["lid"]}" fill="none" stroke="#00ff70" stroke-width="2"/>'+element(m['outer'], 'none').replace('fill="none"','fill="none" stroke="#ff1685" stroke-width="1"')+element(m['iris'], 'none').replace('fill="none"','fill="none" stroke="#00ffff" stroke-width="1"') for m in models)
     lines += ''.join(f'<path d="{m["eyelid_band"]["path"]}" fill="none" stroke="#ffad00" stroke-width="1"/>' for m in models if m['eyelid_band'])
-    (out/'overlay.svg').write_text(header+'<image href="../hybrid-contours/mild/input.png" width="512" height="512"/>'+lines+'</svg>')
+    (out/'overlay.svg').write_text(header+'<image href="../hybrid-contours/mild/input.png" width="512" height="512"/>'+lines+''.join(evidence_marks)+'</svg>')
     (out/'models.json').write_text(json.dumps(models, indent=2))
+    (out/'rejections.json').write_text(json.dumps(failures, indent=2))
     (out/'index.html').write_text('''<!doctype html><meta charset="utf-8"><title>Simple eye shapes</title><style>body{background:#242832;color:white;font:16px system-ui;margin:24px}main{display:grid;grid-template-columns:1fr 1fr;gap:24px}object{width:100%;aspect-ratio:1;background:#587f9c}h2{margin-bottom:8px}</style><h1>Automatic eye-shape proposals</h1><p>Detected from dark regions and adjacent whites. No manually selected eye coordinates. Green: proposed eyelid. Pink: outer ellipse. Cyan: iris ellipse. Orange: eyelid outline.</p><main><section><h2>Fit over original</h2><object data="overlay.svg" type="image/svg+xml"></object></section><section><h2>Vector shapes only</h2><object data="shapes.svg" type="image/svg+xml"></object></section></main><p>Flat colors expose geometry. Blue eyelids use two quadratic curves with tapering ends. Their thickness is estimated from the source blue band. Highlights and eyes remain beneath the eyelid clip. The mouth and original asset are unchanged. This is a color-based proposal, not a validated general detector; overlap order is assumed.</p>''', encoding='utf-8')
-    assert len(models) > 0
+    page = (out/'index.html').read_text(encoding='utf-8')
+    page = page.replace('<h1>Automatic eye-shape proposals</h1>', '<h1>Strict white outer-arc fit</h1><p>Bright green dots show the selected white/blue boundary evidence. Rejected fits are omitted from the vector panel.</p><p>'+str(len(models))+' accepted fit(s); '+str(len(failures))+' rejected fit(s). '+ '; '.join(f['reason'] for f in failures)+'</p>')
+    (out/'index.html').write_text(page, encoding='utf-8')
     assert all(np.isfinite(np.asarray(m['lid_quadratic'])).all() for m in models)
     print(json.dumps(models, indent=2))
 
