@@ -28,6 +28,7 @@ def main():
     p.add_argument('--resume',action='store_true')
     p.add_argument('--max-output',type=int,default=0)
     p.add_argument('--tile-size',type=int,default=0)
+    p.add_argument('--final-node',help='Explicit final processing node ID, including transparency merge')
     args=p.parse_args()
     args.output.mkdir(parents=True,exist_ok=True)
     raw=args.chain.read_bytes();chain=json.loads(raw)['content']
@@ -40,9 +41,13 @@ def main():
     (args.output/'chain-snapshot.chn').write_bytes(raw)
     registry={n['schemaId']:n for n in request(args.backend,'/nodes')['nodes']}
     nodes={n['id']:n for n in chain['nodes']}
-    final=[n for n in nodes.values() if n['data']['schemaId']=='sam:gimp:mean_curvature_blur']
-    assert len(final)==1,'Choose a unique final processing node'
-    final=final[0]['id']
+    if args.final_node:
+        assert args.final_node in nodes,'Final node not found'
+        final=args.final_node
+    else:
+        final=[n for n in nodes.values() if n['data']['schemaId']=='sam:gimp:mean_curvature_blur']
+        assert len(final)==1,'Choose a unique final processing node with --final-node'
+        final=final[0]['id']
     incoming={(e['target'],int(e['targetHandle'].rsplit('-',1)[1])):e for e in chain['edges']}
     active=set()
     def include(node_id):
@@ -56,7 +61,9 @@ def main():
     assert len(load)==1
     options=json.loads(args.settings.read_text())['packageSettings']
     report=dict(chain_sha256=hashlib.sha256(raw).hexdigest(),options=options,processing=[nodes[i]['data'] for i in sorted(active)],results=[])
+    report['final_node']=final
     if previous:
+        assert previous.get('final_node',final)==final,'Cannot resume with a different final node'
         if previous['options']!=options:raise ValueError('Cannot resume with different backend settings')
         report=previous
     inputs=sorted(args.inputs.glob('*.png'))
