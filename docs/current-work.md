@@ -63,3 +63,9 @@ Added tools/hybrid_contours.py. It traces four broad hue regions from Sam's curr
 The SVG is a hybrid document containing editable vector clipping paths and embedded raster shading. It is not wholly vector artwork. SciPy is required; the prototype ran with chaiNNer's bundled Python, which already provides SciPy.
 
 Visual review: gradients remain, with changes at the hat, eye, and beak contours. Independent masks can introduce seams and over-sharpen transitions. Same-hue boundaries such as the mouth opening remain untreated. Hue rules are tailored to Dedede; this is not yet automatic segmentation for arbitrary assets. Do not batch-apply it without review. Original inputs remain unchanged.
+
+## Full vector experiment (2026-09-08)
+
+Sam requested a clean vector of the smoothed input after rejecting the hybrid contour result. Added tools/trace_full_vector.py. Input is the saved StarSample portrait snapshot from hybrid-contours/mild/input.png. Applies GEGL Mean Curvature Blur at 2 iterations, preserves source alpha, then traces 24/48-color cumulative masks with Potrace. Cumulative regions overlap to avoid gaps between separate masks.
+
+The SVGs contain only filled paths, without image elements or clipping masks. They were rendered and visually inspected. 24 colors: 3,149 curve segments. 48 colors: 7,064 segments. Gradients become visible color bands, and minor contour defects remain. This is a full-vector comparison, not an approved replacement. Browser: assets/kirby/demos/full-vector/index.html. No in-game test.
