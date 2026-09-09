@@ -119,3 +119,9 @@ This is a proposal experiment, not an accepted automatic repair. Visual checks o
 Added tools/eye_shapes.py. Dark connected components and adjacent neutral bright components propose eye regions without hand-selected coordinates. Partial boundary ellipse fits model outer eyes and irises. Small adjacent white components propose highlights. An asymmetric quadratic fit estimates the upper envelope, discounting downward detours, and clips the layered vector shapes beneath that eyelid.
 
 Detected both eyes on the saved StarSample portrait. Overlay and flat vector-only reconstruction are at demos/eye-shapes/. SVGs rendered and inspected; eyelid sweeps avoid highlight dips, but ellipse fits distort the eyes and highlight detection includes small false components. Layer ordering is assumed, not inferred. This is a color-based eye experiment, not a general automatic reconstruction engine. Original image and mouth remain unchanged. No shading reconstruction, other-asset validation, or automatic model acceptance yet.
+
+## Truncated ellipse fitting (2026-09-09)
+
+Changed eye_shapes.py to exclude points near the proposed eyelid and fit deterministic samples of exposed contour arcs. Candidates use capped boundary residuals, angular coverage, and a penalty for visible evidence outside the ellipse. Output moved to demos/truncated-eyes/; prior eye-shapes comparison remains intact.
+
+Rendered overlay inspected: the larger eye and iris fit improve substantially. The smaller eye remains ill-conditioned, with implausible hidden extension. Do not accept it automatically. Only the eyelid is excluded explicitly; other occluders such as the beak are not inferred. Added a synthetic clipped-ellipse check during development. General occluder classification, uncertainty-based rejection, and batch validation remain pending.

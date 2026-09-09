@@ -9,13 +9,53 @@ import numpy as np
 from PIL import Image
 
 
-def ellipse(mask):
+def ellipse(mask, lid=None):
     contours, _ = cv2.findContours(mask.astype('uint8'), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     points = max(contours, key=cv2.contourArea)[:, 0, :]
-    # The upper boundary can contain occlusions. Fit the visible lower and side arc.
-    cutoff = np.quantile(points[:, 1], .35)
-    lower = points[points[:, 1] >= cutoff]
-    return cv2.fitEllipse(lower.astype('float32'))
+    if lid is not None:
+        left, right, coef = lid
+        t = (points[:, 0]-left)/max(right-left, 1)
+        points = points[points[:, 1] > coef[0]+coef[1]*t+coef[2]*t*t+3]
+    if len(points) < 12:
+        raise ValueError('Insufficient exposed arc for ellipse fitting')
+    span = np.ptp(points, axis=0).astype(float)
+    center = points.mean(axis=0)
+    candidates = [points]
+    rng = np.random.default_rng(42)
+    # Fit contiguous exposed arcs rather than treating every mask edge as ellipse evidence.
+    for _ in range(240):
+        count = max(8, int(len(points)*rng.uniform(.3, .8)))
+        start = rng.integers(len(points))
+        candidates.append(points[(np.arange(count)+start) % len(points)])
+    best = None
+    for subset in candidates:
+        e = cv2.fitEllipse(subset.astype('float32'))
+        c, size, angle = e
+        radii = np.asarray(size)/2
+        if radii.min() < 3 or radii.max() > span.max()*1.8 or radii.max()/radii.min() > 4:
+            continue
+        if np.linalg.norm(np.asarray(c)-center) > span.max():
+            continue
+        theta = np.deg2rad(angle)
+        rotation = np.array([[np.cos(theta), np.sin(theta)], [-np.sin(theta), np.cos(theta)]])
+        local = (points-np.asarray(c))@rotation.T
+        normalized = local/radii
+        f = (normalized**2).sum(axis=1)-1
+        distance = np.abs(f)/np.maximum(2*np.linalg.norm(local/radii**2, axis=1), 1e-6)
+        # Occlusion removes ellipse area; it cannot put visible eye pixels outside it.
+        outside_penalty = np.maximum(distance-3, 0)*(f > 0)
+        inliers = distance < 1.5
+        # A short arc cannot strongly constrain hidden continuation.
+        bins = np.floor((np.arctan2(normalized[:, 1], normalized[:, 0])+np.pi)*12/(2*np.pi)).astype(int)%12
+        coverage = len(np.unique(bins[inliers]))
+        if coverage < 5:
+            continue
+        score = float(np.minimum(1.5, distance).sum()+outside_penalty.sum()*4)
+        if best is None or score < best[0]:
+            best = (score, e, int(inliers.sum()), len(points), coverage)
+    if best is None:
+        raise ValueError('No sufficiently supported truncated ellipse')
+    return best[1]
 
 
 def element(e, fill):
@@ -25,7 +65,7 @@ def element(e, fill):
 
 def main():
     root = Path(__file__).resolve().parents[1]/'assets/kirby/demos'
-    out = root/'eye-shapes'
+    out = root/'truncated-eyes'
     out.mkdir(exist_ok=True)
     rgba = np.asarray(Image.open(root/'hybrid-contours/mild/input.png').convert('RGBA'))
     rgb, alpha = rgba[:, :, :3], rgba[:, :, 3]
@@ -51,7 +91,6 @@ def main():
         highlights = [mask for mask in whites if mask is not sclera and mask.sum() < area*.3]
         whole = (pupil | sclera).astype('uint8')
         whole = cv2.morphologyEx(whole, cv2.MORPH_CLOSE, np.ones((5, 5), 'uint8'))
-        outer, iris = ellipse(whole), ellipse(pupil)
         # Robust quadratic upper envelope ignores downward detours around highlights.
         xs = np.flatnonzero(whole.any(axis=0))
         top = np.array([np.flatnonzero(whole[:, col])[0] for col in xs], float)
@@ -63,6 +102,7 @@ def main():
             residual = top-design@coef
             weights = np.where(residual > 0, .12, .88)
         left, right = float(xs[0]), float(xs[-1])
+        outer, iris = ellipse(whole, (left, right, coef)), ellipse(pupil, (left, right, coef))
         y0, y1 = float(coef[0]), float(coef.sum())
         control_y = float(coef[0]+coef[1]/2)
         lid = f'M {left} {y0} Q {(left+right)/2} {control_y} {right} {y1}'
