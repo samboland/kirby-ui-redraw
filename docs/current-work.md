@@ -133,3 +133,9 @@ Highlight false-positive fix: a thin 104-pixel white edge fragment beside the la
 The thin white fragment rejected as a false highlight still belongs to the sclera evidence. Significant thin fragments now contribute to the outer-eye mask, improving its left extent. The fragment remains excluded from highlights.
 
 Added blue eyelid bands using two quadratic curves with shared tapering endpoints. Thickness and flat color come from nearby blue source pixels. Both bands generated; one highlight per eye remains. Render inspected. The mouth and source image remain unchanged. The smaller ellipse remains unstable, and the lens-shaped eyelid assumption still needs visual review and validation on other assets.
+
+## Joint ellipse containment (2026-09-09)
+
+Outer and iris candidates are now selected jointly by total boundary score, rejecting pairs whose iris leaves the outer ellipse. This version enforces full-ellipse containment, stronger than visible-only containment. Candidate checks sample 2,048 iris boundary points; final validation uses 32,768 points. This is numerical validation, not a symbolic containment proof.
+
+Both eye pairs passed dense containment checks. Three focused tests cover rejection of a better-scoring crossing pair, no feasible pair, and rotated coordinate transforms. Overlay rendered and inspected. The crossing smaller-eye fit is eliminated, but its hidden continuation remains uncertain and the beak occluder is still not modeled. No iris shrink or SVG clipping workaround was used. Other assets and perturbation stability remain untested.

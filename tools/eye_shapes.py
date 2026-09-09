@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image
 
 
-def ellipse(mask, lid=None):
+def ellipse(mask, lid=None, return_candidates=False):
     contours, _ = cv2.findContours(mask.astype('uint8'), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     points = max(contours, key=cv2.contourArea)[:, 0, :]
     if lid is not None:
@@ -27,7 +27,7 @@ def ellipse(mask, lid=None):
         count = max(8, int(len(points)*rng.uniform(.3, .8)))
         start = rng.integers(len(points))
         candidates.append(points[(np.arange(count)+start) % len(points)])
-    best = None
+    ranked = []
     for subset in candidates:
         e = cv2.fitEllipse(subset.astype('float32'))
         c, size, angle = e
@@ -51,11 +51,50 @@ def ellipse(mask, lid=None):
         if coverage < 5:
             continue
         score = float(np.minimum(1.5, distance).sum()+outside_penalty.sum()*4)
-        if best is None or score < best[0]:
-            best = (score, e, int(inliers.sum()), len(points), coverage)
-    if best is None:
+        ranked.append((score, e))
+    if not ranked:
         raise ValueError('No sufficiently supported truncated ellipse')
-    return best[1]
+    ranked.sort(key=lambda item: item[0])
+    return ranked if return_candidates else ranked[0][1]
+
+
+def boundary(e, count=2048):
+    center, size, angle = e
+    t = np.arange(count)*2*np.pi/count
+    theta = np.deg2rad(angle)
+    rotation = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+    return (np.column_stack((np.cos(t), np.sin(t)))*(np.asarray(size)/2))@rotation.T+center
+
+
+def ellipse_level(e, points):
+    center, size, angle = e
+    theta = np.deg2rad(angle)
+    rotation = np.array([[np.cos(theta), np.sin(theta)], [-np.sin(theta), np.cos(theta)]])
+    return (((points-center)@rotation.T/(np.asarray(size)/2))**2).sum(axis=1)
+
+
+def joint_ellipses(whole, pupil, lid):
+    outers = ellipse(whole, lid, True)
+    irises = ellipse(pupil, lid, True)
+    best = None
+    rejected = 0
+    # Full ellipse containment is deliberately stronger than visible-only containment.
+    # The pupil remains inside the eye even behind an occluding eyelid.
+    iris_points = [boundary(e) for _, e in irises]
+    for outer_score, outer in outers:
+        for (iris_score, iris), points in zip(irises, iris_points):
+            score = outer_score+iris_score
+            if best is not None and score >= best[0]:
+                continue
+            if ellipse_level(outer, points).max() > 1-1e-6:
+                rejected += 1
+                continue
+            best = (score, outer, iris)
+    if best is None:
+        raise ValueError('No supported nested ellipse pair; retain the source instead')
+    dense_max = float(ellipse_level(best[1], boundary(best[2], 32768)).max())
+    assert dense_max <= 1, 'Dense containment validation failed'
+    return best[1], best[2], dict(outer_candidates=len(outers), iris_candidates=len(irises), rejected_pairs=rejected, maximum_iris_level=dense_max, constraint='full ellipse containment sampled at 32768 points')
 
 
 def element(e, fill):
@@ -161,7 +200,7 @@ def main():
             residual = top-design@coef
             weights = np.where(residual > 0, .12, .88)
         left, right = float(xs[0]), float(xs[-1])
-        outer, iris = ellipse(whole, (left, right, coef)), ellipse(pupil, (left, right, coef))
+        outer, iris, joint_info = joint_ellipses(whole, pupil, (left, right, coef))
         y0, y1 = float(coef[0]), float(coef.sum())
         control_y = float(coef[0]+coef[1]/2)
         lid = f'M {left} {y0} Q {(left+right)/2} {control_y} {right} {y1}'
@@ -178,7 +217,7 @@ def main():
         band, band_info = eyelid_band(rgb, hsv, left, right, coef, height)
         group += band
         markup.append(group)
-        models.append(dict(component=i, bounds=[x,y,width,height], outer=outer, iris=iris, highlights=len(highlights), rejected_highlights=rejected_highlights, sclera_fragments=len(sclera_fragments), eyelid_band=band_info, lid_quadratic=coef.tolist(), lid=lid))
+        models.append(dict(component=i, bounds=[x,y,width,height], outer=outer, iris=iris, joint_fit=joint_info, highlights=len(highlights), rejected_highlights=rejected_highlights, sclera_fragments=len(sclera_fragments), eyelid_band=band_info, lid_quadratic=coef.tolist(), lid=lid))
     header = f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
     shapes = ''.join(markup)
     (out/'shapes.svg').write_text(header+shapes+'</svg>')
