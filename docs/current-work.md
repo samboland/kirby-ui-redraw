@@ -173,3 +173,11 @@ Added enlarged eye overlays to the comparison page. Refit and previous-band IoUs
 Sam stopped vector reconstruction and requested the previous raster work. Added tools/raster_review.py and demos/raster-review/, linking the saved Dedede StarSample snapshot plus ten chaiNNer batch results against native originals. No processing, chain settings, or source images changed. All 11 source/output pairs exist. Vector experiments remain references, not the active path.
 
 Active direction: raster upscaling with Separate Alpha and GIMP Mean Curvature Blur/downscale. Keep actual saved chain settings unless Sam changes them. Reshading remains a possible later raster operation, with existing silhouettes and alpha preserved; no reshading implementation or new processing is authorized by this handoff alone.
+
+## Saved user chain batch (2026-09-09)
+
+Ran work/upscalingtest_01.chn on all ten test-set-02 inputs through a separate chaiNNer backend on port 8767. The user's running app was not interrupted. The helper backend was stopped after completion. Added tools/run_saved_chain_batch.py and tools/review_saved_chain_batch.py. Output: demos/pipeline-batch-20260909/, including chain snapshot, report, and three-way comparison against native and previous raster.
+
+Exact processing: To Zero threshold 18% (anti-aliasing off) BEFORE StarSample V2 HQ, custom 4x with Separate Alpha; median blur radius 1; GEGL Mean Curvature Blur 3, Preserve Alpha off. The saved source-preview resize branch is not a final downscale. Threshold and both blurs can change alpha; preserved the user's settings rather than silently changing them. PyTorch used saved GPU 0/FP16 settings.
+
+All ten runs succeeded, outputs verified as RGBA PNGs at 4x native dimensions. Saved chain SHA-256 remained unchanged. Pointer, metallic numeral, and Sword card visually inspected; pointer thumb fringe appears reduced, but fidelity is not approved across all assets. In-game replacement, mipmaps, and animation consistency remain untested. Next: user review of the batch before applying to level-one dumps.

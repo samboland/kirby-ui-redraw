@@ -1,0 +1,87 @@
+"""Run the saved single-image chain through an isolated chaiNNer backend.
+
+Keeps processing node settings and wiring; replaces only input paths and adds PNG saving.
+"""
+import argparse
+import hashlib
+import json
+import time
+import urllib.request
+from pathlib import Path
+from PIL import Image
+
+
+def request(base,path,data=None):
+    body=None if data is None else json.dumps(data).encode()
+    req=urllib.request.Request(base+path,data=body,headers={'Content-Type':'application/json'})
+    with urllib.request.urlopen(req,timeout=7200) as response:
+        return json.load(response)
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--chain',type=Path,required=True)
+    p.add_argument('--inputs',type=Path,required=True)
+    p.add_argument('--output',type=Path,required=True)
+    p.add_argument('--backend',default='http://127.0.0.1:8767')
+    p.add_argument('--settings',type=Path,required=True)
+    args=p.parse_args()
+    args.output.mkdir(parents=True,exist_ok=True)
+    raw=args.chain.read_bytes();chain=json.loads(raw)['content']
+    (args.output/'chain-snapshot.chn').write_bytes(raw)
+    registry={n['schemaId']:n for n in request(args.backend,'/nodes')['nodes']}
+    nodes={n['id']:n for n in chain['nodes']}
+    final=[n for n in nodes.values() if n['data']['schemaId']=='sam:gimp:mean_curvature_blur']
+    assert len(final)==1,'Choose a unique final processing node'
+    final=final[0]['id']
+    incoming={(e['target'],int(e['targetHandle'].rsplit('-',1)[1])):e for e in chain['edges']}
+    active=set()
+    def include(node_id):
+        if node_id in active:return
+        active.add(node_id)
+        for (target,_),edge in incoming.items():
+            if target==node_id:include(edge['source'])
+    include(final)
+    assert all(not nodes[i]['data'].get('isDisabled') and not nodes[i]['data'].get('isPassthrough') for i in active)
+    load=[i for i in active if nodes[i]['data']['schemaId']=='chainner:image:load']
+    assert len(load)==1
+    options=json.loads(args.settings.read_text())['packageSettings']
+    report=dict(chain_sha256=hashlib.sha256(raw).hexdigest(),options=options,processing=[nodes[i]['data'] for i in sorted(active)],results=[])
+    inputs=sorted(args.inputs.glob('*.png'))
+    for index,source in enumerate(inputs,1):
+        destination=args.output/source.name
+        if destination.exists():raise FileExistsError(f'Refusing to overwrite {destination}')
+        data=[]
+        for node_id in sorted(active):
+            node=nodes[node_id]['data'];schema=registry[node['schemaId']]
+            values=dict(node.get('inputData',{}))
+            if node_id==load[0]:values['0']=str(source.resolve())
+            inputs_json=[]
+            for item in schema['inputs']:
+                edge=incoming.get((node_id,item['id']))
+                if edge:
+                    source_schema=registry[nodes[edge['source']]['data']['schemaId']]
+                    output_id=int(edge['sourceHandle'].rsplit('-',1)[1])
+                    output_index=next(i for i,o in enumerate(source_schema['outputs']) if o['id']==output_id)
+                    inputs_json.append(dict(type='edge',id=edge['source'],index=output_index))
+                else:
+                    inputs_json.append(dict(type='value',value=values.get(str(item['id']))))
+            data.append(dict(id=node_id,schemaId=node['schemaId'],inputs=inputs_json,parent=None,nodeType='regularNode'))
+        defaults={1:str(args.output.resolve()),2:None,3:source.stem,4:'png',5:95,6:'BC1_UNORM_SRGB',7:0,8:0,9:0,10:0,11:2167057,12:0,13:0,14:0,15:'u8',16:'u8',17:'4:2:0',18:5,1000:0}
+        save_inputs=[dict(type='edge',id=final,index=0) if item['id']==0 else dict(type='value',value=defaults[item['id']]) for item in registry['chainner:image:save']['inputs']]
+        data.append(dict(id='batch-save',schemaId='chainner:image:save',inputs=save_inputs,parent=None,nodeType='regularNode'))
+        started=time.time()
+        print(f'{index}/{len(inputs)} processing {source.name}',flush=True)
+        result=request(args.backend,'/run',dict(data=data,options=options,sendBroadcastData=False))
+        assert destination.exists(),result
+        with Image.open(source) as original,Image.open(destination) as output:
+            output.load()
+            assert output.size==(original.width*4,original.height*4)
+            entry=dict(name=source.name,source_size=original.size,output_size=output.size,mode=output.mode,seconds=round(time.time()-started,2))
+        report['results'].append(entry)
+        (args.output/'report.json').write_text(json.dumps(report,indent=2))
+        print(json.dumps(entry),flush=True)
+
+
+if __name__=='__main__':main()
+
