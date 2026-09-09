@@ -42,6 +42,18 @@ def main():
         overlay=rgba.copy();overlay[edges>0,:3]=[255,30,180]
         Image.fromarray(overlay).save(out/f'{name}-overlay.png')
         Image.fromarray(edges).save(out/f'{name}-edges.png')
+        if name=='control':
+            alpha_edges=cv2.Canny(np.ascontiguousarray(alpha),64,128,L2gradient=True)
+            combined=cv2.bitwise_or(edges,alpha_edges)
+            Image.fromarray(255-combined).save(out/'control-line-art-white.png')
+            transparent=np.zeros_like(rgba);transparent[:,:,3]=combined
+            Image.fromarray(transparent).save(out/'control-line-art.png')
+            complete_overlay=rgba.copy()
+            complete_overlay[edges>0,:3]=[255,30,180]
+            complete_overlay[alpha_edges>0]=[0,220,255,255]
+            Image.fromarray(complete_overlay).save(out/'control-alpha-overlay.png')
+            assert np.all(combined[edges>0]==255)
+            assert np.all(combined[alpha_edges>0]==255)
         saved=np.asarray(Image.open(out/f'{name}-filtered.png'))
         assert np.array_equal(saved[:,:,3],alpha) and saved.shape==rgba.shape
         reports.append(dict(name=name,spatial_radius=sp,color_radius=sr,
@@ -54,6 +66,7 @@ def main():
     html='''<!doctype html><meta charset="utf-8"><title>Mean-shift edge experiment</title>
 <style>body{background:#252831;color:white;font:17px system-ui;margin:24px}button{padding:10px;margin:6px}.row{display:grid;grid-template-columns:repeat(4,minmax(200px,1fr));gap:14px}img{width:100%;background:repeating-conic-gradient(#666 0% 25%,#999 0% 50%) 0/20px 20px}a{color:#bce}</style>
 <h1>Mean-shift edge experiment</h1><p>No fixed palette and no tracing. Nearby similar colors are grouped before detecting edges.</p>
+<p><a href="line-art.html">Control line art with alpha boundaries</a></p>
 <p>Magenta marks proposed internal edges over the unchanged input. These are edge candidates, not complete region boundaries.</p>
 <button onclick="show('overlay')">Edge overlay</button><button onclick="show('filtered')">Filtered color</button><button onclick="show('edges')">Edges only</button><div class="row">'''
     for r in reports:
@@ -61,6 +74,12 @@ def main():
     html+='''</div><p>Settings use pixels and encoded 8-bit Lab color distance. Strong filtering may flatten shading or create false boundaries. Transparent RGB is extended before processing; output alpha is preserved exactly.</p>
 <script>function show(mode){for(const im of document.querySelectorAll('img')){im.src=im.dataset.name+'-'+mode+'.png';im.parentElement.href=im.src}}</script>'''
     (out/'index.html').write_text(html,encoding='utf-8')
+    (out/'line-art.html').write_text('''<!doctype html><meta charset="utf-8"><title>Control line art</title>
+<style>body{background:#252831;color:white;font:18px system-ui;margin:24px}.row{display:flex;gap:20px}.row div{width:50%}img{width:100%;background:#888}a{color:#acf}</style>
+<h1>Control edges + alpha boundary</h1><p>Original control edges retained. Cyan marks the added alpha boundary; magenta marks internal edges. No mean-shift filtering.</p>
+<div class="row"><div><p>Combined line art</p><a href="control-line-art-white.png"><img src="control-line-art-white.png"></a></div><div><p>Boundary overlay</p><img src="control-alpha-overlay.png"></div></div>
+<p><a href="control-line-art.png">Transparent black line-art PNG</a> · <a href="index.html">Back to comparison</a></p>
+<p>Raster edge map, not vector paths. Existing gaps and pixel-scale irregularities are preserved.</p>''',encoding='utf-8')
     print(json.dumps(reports))
 
 if __name__=='__main__':main()
