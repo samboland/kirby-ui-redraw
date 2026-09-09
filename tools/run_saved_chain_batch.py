@@ -29,6 +29,7 @@ def main():
     p.add_argument('--max-output',type=int,default=0)
     p.add_argument('--tile-size',type=int,default=0)
     p.add_argument('--final-node',help='Explicit final processing node ID, including transparency merge')
+    p.add_argument('--scale-resize-node',help='Resize node whose percentage must follow the selected output scale')
     args=p.parse_args()
     args.output.mkdir(parents=True,exist_ok=True)
     raw=args.chain.read_bytes();chain=json.loads(raw)['content']
@@ -56,6 +57,10 @@ def main():
         for (target,_),edge in incoming.items():
             if target==node_id:include(edge['source'])
     include(final)
+    if args.scale_resize_node:
+        assert args.scale_resize_node in active
+        assert nodes[args.scale_resize_node]['data']['schemaId']=='chainner:image:resize'
+        assert (args.scale_resize_node,2) not in incoming
     assert all(not nodes[i]['data'].get('isDisabled') and not nodes[i]['data'].get('isPassthrough') for i in active)
     load=[i for i in active if nodes[i]['data']['schemaId']=='chainner:image:load']
     assert len(load)==1
@@ -96,6 +101,7 @@ def main():
             node=nodes[node_id]['data'];schema=registry[node['schemaId']]
             values=dict(node.get('inputData',{}))
             if node_id==load[0]:values['0']=str(source.resolve())
+            if node_id==args.scale_resize_node:values.update({'1':0,'2':scale*100})
             if node['schemaId']=='chainner:pytorch:upscale_image':
                 if args.max_output:values.update({'4':1,'5':scale})
                 if args.tile_size:values['2']=args.tile_size
