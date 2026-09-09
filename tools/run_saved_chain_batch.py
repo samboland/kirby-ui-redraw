@@ -25,9 +25,16 @@ def main():
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--backend',default='http://127.0.0.1:8767')
     p.add_argument('--settings',type=Path,required=True)
+    p.add_argument('--resume',action='store_true')
     args=p.parse_args()
     args.output.mkdir(parents=True,exist_ok=True)
     raw=args.chain.read_bytes();chain=json.loads(raw)['content']
+    digest=hashlib.sha256(raw).hexdigest()
+    previous=None
+    if (args.output/'report.json').exists():
+        if not args.resume:raise ValueError('Existing report requires --resume')
+        previous=json.loads((args.output/'report.json').read_text())
+        if previous['chain_sha256']!=digest:raise ValueError('Cannot resume with a different chain')
     (args.output/'chain-snapshot.chn').write_bytes(raw)
     registry={n['schemaId']:n for n in request(args.backend,'/nodes')['nodes']}
     nodes={n['id']:n for n in chain['nodes']}
@@ -47,10 +54,30 @@ def main():
     assert len(load)==1
     options=json.loads(args.settings.read_text())['packageSettings']
     report=dict(chain_sha256=hashlib.sha256(raw).hexdigest(),options=options,processing=[nodes[i]['data'] for i in sorted(active)],results=[])
+    if previous:
+        if previous['options']!=options:raise ValueError('Cannot resume with different backend settings')
+        report=previous
     inputs=sorted(args.inputs.glob('*.png'))
+    report.update(total=len(inputs),status='running')
+    def save_report():
+        temp=args.output/'report.tmp.json'
+        temp.write_text(json.dumps(report,indent=2))
+        temp.replace(args.output/'report.json')
+    save_report()
+    completed={r['name']:r for r in report['results']}
     for index,source in enumerate(inputs,1):
         destination=args.output/source.name
+        source_hash=hashlib.sha256(source.read_bytes()).hexdigest()
+        if source.name in completed:
+            entry=completed[source.name]
+            if entry.get('source_sha256')!=source_hash:raise ValueError('Source changed since completed run')
+            with Image.open(destination) as output:
+                output.load()
+                assert list(output.size)==list(entry['output_size'])
+            continue
         if destination.exists():raise FileExistsError(f'Refusing to overwrite {destination}')
+        report['current']=source.name
+        save_report()
         data=[]
         for node_id in sorted(active):
             node=nodes[node_id]['data'];schema=registry[node['schemaId']]
@@ -72,15 +99,22 @@ def main():
         data.append(dict(id='batch-save',schemaId='chainner:image:save',inputs=save_inputs,parent=None,nodeType='regularNode'))
         started=time.time()
         print(f'{index}/{len(inputs)} processing {source.name}',flush=True)
-        result=request(args.backend,'/run',dict(data=data,options=options,sendBroadcastData=False))
+        try:
+            result=request(args.backend,'/run',dict(data=data,options=options,sendBroadcastData=False))
+        except Exception as error:
+            report.update(status='error',error=str(error))
+            save_report()
+            raise
         assert destination.exists(),result
         with Image.open(source) as original,Image.open(destination) as output:
             output.load()
             assert output.size==(original.width*4,original.height*4)
-            entry=dict(name=source.name,source_size=original.size,output_size=output.size,mode=output.mode,seconds=round(time.time()-started,2))
+            entry=dict(name=source.name,source_sha256=source_hash,source_size=original.size,output_size=output.size,mode=output.mode,seconds=round(time.time()-started,2))
         report['results'].append(entry)
-        (args.output/'report.json').write_text(json.dumps(report,indent=2))
+        save_report()
         print(json.dumps(entry),flush=True)
+    report.update(status='complete',current=None)
+    save_report()
 
 
 if __name__=='__main__':main()

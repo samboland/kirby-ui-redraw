@@ -181,3 +181,11 @@ Ran work/upscalingtest_01.chn on all ten test-set-02 inputs through a separate c
 Exact processing: To Zero threshold 18% (anti-aliasing off) BEFORE StarSample V2 HQ, custom 4x with Separate Alpha; median blur radius 1; GEGL Mean Curvature Blur 3, Preserve Alpha off. The saved source-preview resize branch is not a final downscale. Threshold and both blurs can change alpha; preserved the user's settings rather than silently changing them. PyTorch used saved GPU 0/FP16 settings.
 
 All ten runs succeeded, outputs verified as RGBA PNGs at 4x native dimensions. Saved chain SHA-256 remained unchanged. Pointer, metallic numeral, and Sword card visually inspected; pointer thumb fringe appears reduced, but fidelity is not approved across all assets. In-game replacement, mipmaps, and animation consistency remain untested. Next: user review of the batch before applying to level-one dumps.
+
+## Level-one batch started (2026-09-09)
+
+Sam explicitly authorized upscaling the level-one dump. Staged 991 PNGs in work/level1-batch-20260909/inputs; held 561 images sized 320x240 or 640x480 based on the sampled intro-video frames. This is a size-based provisional filter, not proof that every held texture is video. Original dumps remain untouched.
+
+Frozen chain and app settings are in the staging directory. Output and live progress: assets/kirby/demos/level1-batch/, http://127.0.0.1:8766/demos/level1-batch/. Separate backend PID 10608 on port 8767. Background runner launch was blocked by automatic approval review; direct monitored execution succeeded in exec session 96647. First 100x158 texture completed as 400x632 RGBA. Batch remains running; do not claim completion without reading report.json.
+
+Runner now supports --resume, validates chain/settings/source hashes and completed-image dimensions, and writes atomic progress reports. It stops on backend errors. It refuses to overwrite an unrecorded output. Resume with the same command: chaiNNer Python tools/run_saved_chain_batch.py --chain work/level1-batch-20260909/pipeline.chn --inputs work/level1-batch-20260909/inputs --output assets/kirby/demos/level1-batch --settings work/level1-batch-20260909/settings.json --resume. Backend must be running. No Dolphin replacements installed. Next: check batch status and failures, then inspect completed results before installation.
