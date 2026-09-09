@@ -82,10 +82,17 @@ def main():
         (out/f'{name}.json').write_text(json.dumps(result))
         report.append(dict(name=name, paths=len(paths), cubics=sum(len(p['segments']) for p in paths), max_sampled_displacement=round(max(deviations), 2), smoothing_sigma=sigma, fit_tolerance=tolerance))
     (out/'report.json').write_text(json.dumps(report, indent=2))
-    cards = '<article><h2>Control</h2><p>376 cubic segments</p><img src="control.svg"></article>'
+    def overlay(name):
+        curves = (out/f'{name}.svg').read_text().replace('stroke="black"', 'stroke="#ff1685"')
+        return '<div class="overlay"><img class="original" alt="Upscaled original" src="../hybrid-contours/mild/input.png">'+curves+'</div>'
+    cards = '<article><h2>Control</h2><p>376 cubic segments</p>'+overlay('control')+'</article>'
     for item in report:
-        cards += f'<article><h2>{item["name"].title()}</h2><p>{item["cubics"]} cubic segments · maximum sampled shift {item["max_sampled_displacement"]} px</p><img src="{item["name"]}.svg"></article>'
-    (out/'index.html').write_text('<!doctype html><meta charset="utf-8"><title>Automatic curve simplification</title><style>body{background:#242832;color:#eee;font:16px system-ui;margin:24px}main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}img{background:white;width:100%}h2{margin-bottom:4px}</style><h1>Automatic curve simplification</h1><p>Same connected line network, progressively fewer curves. No manual edits. Shared junctions stay fixed.</p><p>This experiment does not fix incorrect connections or validate region crossings. Shading is deferred.</p><main>'+cards+'</main>', encoding='utf-8')
+        cards += f'<article><h2>{item["name"].title()}</h2><p>{item["cubics"]} cubic segments · maximum sampled shift {item["max_sampled_displacement"]} px</p>'+overlay(item['name'])+'</article>'
+    (out/'index.html').write_text('''<!doctype html><meta charset="utf-8"><title>Automatic curve simplification</title>
+<style>body{background:#242832;color:#eee;font:16px system-ui;margin:24px;--image-opacity:1;--line-opacity:1}main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.overlay{position:relative;background:white}.original{display:block;width:100%;opacity:var(--image-opacity)}.overlay svg{position:absolute;inset:0;width:100%;height:100%;opacity:var(--line-opacity);pointer-events:none}h2{margin-bottom:4px}nav{position:sticky;top:0;z-index:2;padding:12px;background:#242832;display:flex;gap:24px;flex-wrap:wrap}label{display:flex;align-items:center;gap:8px}</style>
+<h1>Automatic curve simplification</h1><p>Pink curves over the unchanged StarSample upscale used for this experiment. All panels share the same alignment.</p>
+<nav><label>Original opacity <input aria-label="Original opacity" type="range" min="0" max="100" value="100" oninput="document.body.style.setProperty('--image-opacity',this.value/100)"></label><label><input type="checkbox" checked onchange="document.body.style.setProperty('--line-opacity',this.checked?1:0)">Show curves</label></nav>
+<p>This experiment does not fix incorrect connections or validate region crossings. Shading is deferred.</p><main>'''+cards+'</main>', encoding='utf-8')
     print(json.dumps(report, indent=2))
 
 
