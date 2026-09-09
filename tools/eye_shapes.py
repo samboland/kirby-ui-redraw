@@ -88,7 +88,19 @@ def main():
         if not whites:
             continue
         sclera = max(whites, key=np.sum)
-        highlights = [mask for mask in whites if mask is not sclera and mask.sum() < area*.3]
+        highlights = []
+        rejected_highlights = []
+        for mask in whites:
+            if mask is sclera:
+                continue
+            yy, xx = np.where(mask)
+            size = int(mask.sum())
+            box_area = int((xx.max()-xx.min()+1)*(yy.max()-yy.min()+1))
+            # Thin anti-aliased sclera fragments are not compact specular highlights.
+            if max(8, area*.005) <= size < area*.3 and size/box_area >= .35:
+                highlights.append(mask)
+            else:
+                rejected_highlights.append(dict(area=size, box_fill=size/box_area))
         whole = (pupil | sclera).astype('uint8')
         whole = cv2.morphologyEx(whole, cv2.MORPH_CLOSE, np.ones((5, 5), 'uint8'))
         # Robust quadratic upper envelope ignores downward detours around highlights.
@@ -117,7 +129,7 @@ def main():
                 group += element(cv2.fitEllipse(contour), '#ffffff')
         group += '</g>'
         markup.append(group)
-        models.append(dict(component=i, bounds=[x,y,width,height], outer=outer, iris=iris, highlights=len(highlights), lid_quadratic=coef.tolist(), lid=lid))
+        models.append(dict(component=i, bounds=[x,y,width,height], outer=outer, iris=iris, highlights=len(highlights), rejected_highlights=rejected_highlights, lid_quadratic=coef.tolist(), lid=lid))
     header = f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
     shapes = ''.join(markup)
     (out/'shapes.svg').write_text(header+shapes+'</svg>')
