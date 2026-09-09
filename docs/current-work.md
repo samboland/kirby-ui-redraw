@@ -145,3 +145,13 @@ Both eye pairs passed dense containment checks. Three focused tests cover reject
 Added white/blue boundary isolation from the connected sclera island. Excludes nearby dark iris pixels, retains the longest continuous arc, and excludes the proposed eyelid. Outer fits use uncapped squared residuals and reject a 95th-percentile approximate boundary distance above 2 pixels. A white-island coverage check rejects fits explaining only a tiny fragment. Nested iris fitting remains required; a constrained iris refit is available when discrete pairs fail.
 
 Separate review page: demos/white-arc-fit/. Bright green dots show selected evidence. Larger eye passes these heuristic checks; smaller eye is rejected with only 39 selected points. It is omitted from the vector panel instead of showing another unsupported fit. Earlier truncated-eyes outputs were regenerated from the previous committed algorithm and preserved. Three containment tests pass; overlay rendered and inspected. New arc-selection thresholds and constrained optimizer are not validated across assets. Next: improve selection of the smaller sclera's thin outer arc, without relaxing the edge requirement merely to produce a fit.
+
+## Annular eye sectors (2026-09-09)
+
+Sam requested annular sectors for eyes only. Added tools/annular_eyes.py: fits each connected white island with a rotated outer ellipse, offset scaled inner ellipse, and angular sector. Differential evolution minimizes soft mask overlap loss with an inner-containment penalty. Narrow islands get three deterministic starting runs and smaller permitted axes. No manual eye coordinates.
+
+Demo: demos/annular-eyes/. Original eyes remain beneath the fitted white bands, with observed white boundaries in pink. Separate panel shows only vector sclera bands. This does not yet reconstruct iris or highlights with sectors. Mouth and source remain unchanged.
+
+Best observed pixel IoU: larger island 93.54%, smaller island 82.65%. The demo retains best saved candidates across two parameter experiments using --candidates work/annular-first-fit.json assets/kirby/demos/annular-eyes/fit.json. Saved candidates are specific to this source; the reuse option does not verify source identity. Optimization hit its iteration limits; convergence is not claimed. Approximate overlap is not a fidelity approval.
+
+Two geometry tests pass (hole/angular/exterior membership and rotation/translation). Overlay rendered and inspected. Sectors follow both white islands substantially better than the earlier missing-eye output, though endpoint and narrow-strip errors remain. Other assets, generalized classification, and shader reconstruction are untested.
