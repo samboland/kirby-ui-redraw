@@ -101,3 +101,9 @@ The extractor suppresses diagonal pixel shortcuts and fits a shared graph. Simpl
 Comparison: demos/simple-curves/. Control: 376 cubics. Simple: 232; simpler: 187; minimal: 171. All variants have 156 paths. Maximum sampled displacement from control is 2.08, 5.36, and 10.50 pixels respectively on the 512-pixel canvas. These are measured deviations, not guaranteed error bounds.
 
 Validation: finite coordinates, fixed endpoints, and continuous segment joins passed for all variants. SVG rendering passed; strongest output visually inspected. Strong simplification removes mouth bumps but also changes eye curves and rounds crop corners. Incorrect connections remain. Crossings, region preservation, other assets, and automatic strength selection are not validated. Next: review simplification strength, then implement topology cleanup and candidate rejection before batch use.
+
+## Junction cleanup experiment (2026-09-09)
+
+Sam rejected flattened mouth curves and persistent eyelid bumps. Added Junction-cleanup to the existing overlaid simple-curves comparison. It automatically contracts paths at most 6 pixels long within clusters at most 8 pixels wide, removes resulting loops at most 12 pixels long, merges degree-two vertices, then fits with sigma 2 and tolerance 1.2. No semantic masks or manual path edits.
+
+Result: 109 short paths removed, 90 remaining paths, 196 cubics. Finite coordinates, segment continuity, and all shared endpoint coordinates pass. Render inspected: mouth bends remain and several small contour kinks disappear. Larger eyelid junction irregularities remain. Contraction can remove legitimate tiny details; region topology and other assets remain unvalidated. The reported 1.37-pixel sampled fit shift excludes junction movement, as stated on the page. Next: review the new overlay before accepting this contraction rule or expanding it.

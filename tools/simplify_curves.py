@@ -1,5 +1,6 @@
 """Automatic simplification experiment. No manual path edits or source changes."""
 import json
+import copy
 from pathlib import Path
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
@@ -50,6 +51,53 @@ def write_svg(model, path):
     path.write_text(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {model["width"]} {model["height"]}" width="{model["width"]}" height="{model["height"]}"><g fill="none" stroke="black" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">'+''.join(data)+'</g></svg>')
 
 
+def clean_junctions(model):
+    """Collapse small graph tangles with a bounded cluster diameter, without feature masks."""
+    result = copy.deepcopy(model)
+    xy = np.array([v['point'] for v in model['vertices']])
+    parent = list(range(len(xy)))
+    groups = {i: {i} for i in parent}
+    def owner(i):
+        while parent[i] != i:
+            i = parent[i]
+        return i
+    lengths = [np.linalg.norm(np.diff(sample(p['segments']), axis=0), axis=1).sum() for p in model['paths']]
+    for index in np.argsort(lengths):
+        p = model['paths'][index]
+        if lengths[index] > 6:
+            break
+        a, b = owner(p['start']), owner(p['end'])
+        if a == b:
+            continue
+        members = groups[a] | groups[b]
+        points = xy[list(members)]
+        if np.linalg.norm(points[:, None]-points[None, :], axis=2).max() > 8:
+            continue
+        parent[b] = a
+        groups[a] = members
+    centers = {owner(i): xy[list(groups[owner(i)])].mean(axis=0) for i in range(len(xy))}
+    paths = []
+    removed = 0
+    for p, length in zip(result['paths'], lengths):
+        start, end = owner(p['start']), owner(p['end'])
+        if start == end and length <= 12:
+            removed += 1
+            continue
+        # Translate endpoint handles with their shared junctions.
+        first, last = p['segments'][0], p['segments'][-1]
+        for segment, indices, old, new in [(first, (0, 1), first[0], centers[start]), (last, (2, 3), last[3], centers[end])]:
+            delta = new-np.asarray(old)
+            for i in indices:
+                segment[i] = (np.asarray(segment[i])+delta).tolist()
+        p.update(start=start, end=end, id=len(paths))
+        paths.append(p)
+    for i, vertex in enumerate(result['vertices']):
+        vertex['point'] = centers[owner(i)].tolist()
+    result['paths'] = paths
+    result['cleanup'] = dict(removed_short_paths=removed, maximum_cluster_diameter=8)
+    return result
+
+
 def main():
     root = Path(__file__).resolve().parents[1] / 'assets/kirby/demos'
     model = json.loads((root/'bezier-paths/curves.json').read_text())
@@ -58,7 +106,9 @@ def main():
     arcs = merge_arcs(model)
     write_svg(model, out/'control.svg')
     report = []
-    for name, sigma, tolerance in [('simple', 2, 2), ('simpler', 4, 5), ('minimal', 7, 9)]:
+    for name, sigma, tolerance in [('junction-cleanup', 2, 1.2), ('simple', 2, 2), ('simpler', 4, 5), ('minimal', 7, 9)]:
+        current = clean_junctions(model) if name == 'junction-cleanup' else model
+        arcs = merge_arcs(current)
         paths, deviations = [], []
         for arc in arcs:
             raw = arc['points']
@@ -77,10 +127,10 @@ def main():
             output = sample(segments)
             deviations.append(max(cKDTree(output).query(raw)[0].max(), cKDTree(raw).query(output)[0].max()))
             paths.append(dict(id=len(paths), start=arc['start'], end=arc['end'], segments=segments))
-        result = dict(model, paths=paths)
+        result = dict(current, paths=paths)
         write_svg(result, out/f'{name}.svg')
         (out/f'{name}.json').write_text(json.dumps(result))
-        report.append(dict(name=name, paths=len(paths), cubics=sum(len(p['segments']) for p in paths), max_sampled_displacement=round(max(deviations), 2), smoothing_sigma=sigma, fit_tolerance=tolerance))
+        report.append(dict(name=name, paths=len(paths), cubics=sum(len(p['segments']) for p in paths), max_sampled_displacement=round(max(deviations), 2), smoothing_sigma=sigma, fit_tolerance=tolerance, cleanup=current.get('cleanup')))
     (out/'report.json').write_text(json.dumps(report, indent=2))
     def overlay(name):
         curves = (out/f'{name}.svg').read_text().replace('stroke="black"', 'stroke="#ff1685"')
@@ -92,7 +142,7 @@ def main():
 <style>body{background:#242832;color:#eee;font:16px system-ui;margin:24px;--image-opacity:1;--line-opacity:1}main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.overlay{position:relative;background:white}.original{display:block;width:100%;opacity:var(--image-opacity)}.overlay svg{position:absolute;inset:0;width:100%;height:100%;opacity:var(--line-opacity);pointer-events:none}h2{margin-bottom:4px}nav{position:sticky;top:0;z-index:2;padding:12px;background:#242832;display:flex;gap:24px;flex-wrap:wrap}label{display:flex;align-items:center;gap:8px}</style>
 <h1>Automatic curve simplification</h1><p>Pink curves over the unchanged StarSample upscale used for this experiment. All panels share the same alignment.</p>
 <nav><label>Original opacity <input aria-label="Original opacity" type="range" min="0" max="100" value="100" oninput="document.body.style.setProperty('--image-opacity',this.value/100)"></label><label><input type="checkbox" checked onchange="document.body.style.setProperty('--line-opacity',this.checked?1:0)">Show curves</label></nav>
-<p>This experiment does not fix incorrect connections or validate region crossings. Shading is deferred.</p><main>'''+cards+'</main>', encoding='utf-8')
+<p>Junction-cleanup removes tiny graph tangles before fitting, with a tighter tolerance to retain mouth bends. Its shift measurement excludes junction movement. Other panels retain the previous method. Region crossings and lost details remain unvalidated.</p><main>'''+cards+'</main>', encoding='utf-8')
     print(json.dumps(report, indent=2))
 
 
