@@ -1,6 +1,6 @@
 # UI Redraw instructions
 
-Purpose: original game asset extraction, visual review, and editable vector reconstruction. Start with the Potrace library installed with Inkscape. Do not substitute AI raster upscaling.
+Purpose: original game asset extraction, visual review, and editable vector reconstruction. Start with the Potrace library installed with Inkscape. Sam authorized mixed vector and AI upscaling demos on 2026-09-08. Compare methods by asset type. Label generative reconstruction separately from dedicated super-resolution. Reject changed artwork and preserve originals.
 
 Read README.md and docs/current-work.md before changes. Preserve source resolution, alpha, original names, and source-container provenance. Mark unknown formats and uncertain mappings explicitly.
 

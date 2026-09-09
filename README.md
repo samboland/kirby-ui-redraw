@@ -2,7 +2,7 @@
 
 Reconstruct low-resolution game UI as editable vector geometry, starting with Kirby's Return to Dream Land (USA, SUKE01).
 
-The first stage extracts native assets from the user's disc image and creates a searchable local catalog. The tracing stage calls the Potrace DLL bundled with the user's installed Inkscape. No generative raster upscaling is used.
+The first stage extracts native assets from the user's disc image and creates a searchable local catalog. The tracing stage calls the Potrace DLL bundled with the user's installed Inkscape. Experimental demos also compare AI reconstruction against deterministic processing; rejected outputs remain labeled.
 
 ## Setup
 
@@ -46,3 +46,21 @@ Synthetic tests cover compression, archive reading, byte ordering, alpha, palett
 `assets/`, `work/`, `.venv/`, and game images are ignored by git. Keep game data local. Commit source tools and documentation only. The Inkscape DLL is not bundled or copied into this project.
 
 See `docs/formats.md` for format references and `docs/current-work.md` for the handoff.
+
+## Upscaling demos
+
+Run `python tools/build_demos.py` and open `assets/kirby/demos/index.html`. Optional AI images belong in `work/ai-demos/dedede.png` and `work/ai-demos/parasol.png`. The script never calls a model itself.
+
+The flat badge uses two-color Potrace. Other samples compare original color with a traced silhouette and optional AI variants. Geometry renders at 8x native, then reduces to 4x in linear light with premultiplied alpha. Returned AI resolution is recorded separately.
+
+Both initial generative AI samples failed fidelity review. They are retained as rejected comparisons. Dedicated super-resolution is not yet evaluated. Exact built-in tool prompts are in `docs/demo-ai-prompts.json`.
+
+### Mean Curvature Blur
+
+Run `python tools/curvature_demos.py` after `build_demos.py`. Open `assets/kirby/demos/curvature.html`.
+
+This uses the GEGL executable bundled with GIMP 3, with `gegl:mean-curvature-blur iterations=1`, `2`, and `3`. Each comparison includes an unfiltered control. Processing canvases are 8x and 12x native, reduced to 4x. The original vector silhouette is applied after filtering, preserving its alpha geometry.
+
+The larger canvas makes a fixed filter setting weaker at final resolution. Compare both sizes instead of assuming more oversampling always improves the result. The AI inputs in this first experiment remain rejected for changed artwork; this filter test only assesses smoothing.
+
+[GEGL Mean Curvature Blur documentation](https://gegl.org/operations/gegl-mean-curvature-blur.html)
