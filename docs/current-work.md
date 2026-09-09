@@ -107,3 +107,9 @@ Validation: finite coordinates, fixed endpoints, and continuous segment joins pa
 Sam rejected flattened mouth curves and persistent eyelid bumps. Added Junction-cleanup to the existing overlaid simple-curves comparison. It automatically contracts paths at most 6 pixels long within clusters at most 8 pixels wide, removes resulting loops at most 12 pixels long, merges degree-two vertices, then fits with sigma 2 and tolerance 1.2. No semantic masks or manual path edits.
 
 Result: 109 short paths removed, 90 remaining paths, 196 cubics. Finite coordinates, segment continuity, and all shared endpoint coordinates pass. Render inspected: mouth bends remain and several small contour kinks disappear. Larger eyelid junction irregularities remain. Contraction can remove legitimate tiny details; region topology and other assets remain unvalidated. The reported 1.37-pixel sampled fit shift excludes junction movement, as stated on the page. Next: review the new overlay before accepting this contraction rule or expanding it.
+
+## Nearby-edge proposals (2026-09-09)
+
+Added tools/neighbor_curves.py. It joins paths by tangent continuity, fits whole chains with one cubic, and ranks proposals using nearby smooth-edge alignment and how concentrated residual deviations are. No eyelid coordinates or semantic masks. Four candidates pass on Dedede; comparison at demos/neighbor-curves/ uses pink proposed curves and cyan replaced contours.
+
+This is a proposal experiment, not an accepted automatic repair. Visual checks of the first two SVG renders show that chain selection can cross an intended feature boundary. Branches remain at their old locations when a curve moves, producing detached stubs. Nearby agreement alone does not reliably establish the intended eyelid contour. Native-source evidence, branch reattachment, crossing validation, and batch evaluation remain pending. Do not apply these proposals to final textures.
