@@ -55,3 +55,11 @@ Verified node registration, GEGL execution, exact alpha preservation when enable
 ## Additional test assets (2026-09-08)
 
 Sam reports StarSample 2.0 HQ gives good portrait results, and Separate Alpha fixed the visible fringe. Prepared ten additional original assets at assets/kirby/demos/test-set-02/inputs, with a sibling results folder and browser contact sheet. The set covers tiny icons, white transparent edges, metallic numerals, faces, detailed characters, repeating curves, and Sword/Ice cards. All inputs are verified byte-identical copies. Their upscales remain untested. Recreate the set with tools/prepare_test_set.py.
+
+## Hybrid contour prototype (2026-09-08)
+
+Added tools/hybrid_contours.py. It traces four broad hue regions from Sam's current StarSample Dedede output, simplifies their contours with Potrace, and clips extended raster shading through those paths. It renders at twice the input size and downsamples to the input dimensions. Mild and stronger candidates are in assets/kirby/demos/hybrid-contours/index.html.
+
+The SVG is a hybrid document containing editable vector clipping paths and embedded raster shading. It is not wholly vector artwork. SciPy is required; the prototype ran with chaiNNer's bundled Python, which already provides SciPy.
+
+Visual review: gradients remain, with changes at the hat, eye, and beak contours. Independent masks can introduce seams and over-sharpen transitions. Same-hue boundaries such as the mouth opening remain untreated. Hue rules are tailored to Dedede; this is not yet automatic segmentation for arbitrary assets. Do not batch-apply it without review. Original inputs remain unchanged.
