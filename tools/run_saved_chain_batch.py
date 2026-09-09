@@ -26,6 +26,8 @@ def main():
     p.add_argument('--backend',default='http://127.0.0.1:8767')
     p.add_argument('--settings',type=Path,required=True)
     p.add_argument('--resume',action='store_true')
+    p.add_argument('--max-output',type=int,default=0)
+    p.add_argument('--tile-size',type=int,default=0)
     args=p.parse_args()
     args.output.mkdir(parents=True,exist_ok=True)
     raw=args.chain.read_bytes();chain=json.loads(raw)['content']
@@ -59,6 +61,7 @@ def main():
         report=previous
     inputs=sorted(args.inputs.glob('*.png'))
     report.update(total=len(inputs),status='running')
+    report['upcoming_policy']=dict(max_output=args.max_output,tile_size=args.tile_size)
     def save_report():
         temp=args.output/'report.tmp.json'
         temp.write_text(json.dumps(report,indent=2))
@@ -76,6 +79,9 @@ def main():
                 assert list(output.size)==list(entry['output_size'])
             continue
         if destination.exists():raise FileExistsError(f'Refusing to overwrite {destination}')
+        with Image.open(source) as original:
+            scale=min(4,args.max_output//max(original.size)) if args.max_output else 4
+        if scale<1:raise ValueError('Native source exceeds output cap')
         report['current']=source.name
         save_report()
         data=[]
@@ -83,6 +89,9 @@ def main():
             node=nodes[node_id]['data'];schema=registry[node['schemaId']]
             values=dict(node.get('inputData',{}))
             if node_id==load[0]:values['0']=str(source.resolve())
+            if node['schemaId']=='chainner:pytorch:upscale_image':
+                if args.max_output:values.update({'4':1,'5':scale})
+                if args.tile_size:values['2']=args.tile_size
             inputs_json=[]
             for item in schema['inputs']:
                 edge=incoming.get((node_id,item['id']))
@@ -108,8 +117,8 @@ def main():
         assert destination.exists(),result
         with Image.open(source) as original,Image.open(destination) as output:
             output.load()
-            assert output.size==(original.width*4,original.height*4)
-            entry=dict(name=source.name,source_sha256=source_hash,source_size=original.size,output_size=output.size,mode=output.mode,seconds=round(time.time()-started,2))
+            assert output.size==(original.width*scale,original.height*scale)
+            entry=dict(name=source.name,source_sha256=source_hash,source_size=original.size,output_size=output.size,scale=scale,tile_size=args.tile_size,mode=output.mode,seconds=round(time.time()-started,2))
         report['results'].append(entry)
         save_report()
         print(json.dumps(entry),flush=True)
