@@ -69,3 +69,11 @@ Visual review: gradients remain, with changes at the hat, eye, and beak contours
 Sam requested a clean vector of the smoothed input after rejecting the hybrid contour result. Added tools/trace_full_vector.py. Input is the saved StarSample portrait snapshot from hybrid-contours/mild/input.png. Applies GEGL Mean Curvature Blur at 2 iterations, preserves source alpha, then traces 24/48-color cumulative masks with Potrace. Cumulative regions overlap to avoid gaps between separate masks.
 
 The SVGs contain only filled paths, without image elements or clipping masks. They were rendered and visually inspected. 24 colors: 3,149 curve segments. 48 colors: 7,064 segments. Gradients become visible color bands, and minor contour defects remain. This is a full-vector comparison, not an approved replacement. Browser: assets/kirby/demos/full-vector/index.html. No in-game test.
+
+## Mean-shift edge experiment (2026-09-08)
+
+Sam rejected the banded full-vector trace and requested mean-shift clustering to identify boundaries. Added tools/meanshift_edges.py. This first experiment uses OpenCV's mean-shift filtering stage in joint spatial/8-bit Lab color space, followed by Canny proposals from all Lab channels. It does not yet assign closed cluster labels or trace shapes.
+
+The comparison uses the same smoothed StarSample input. Settings: spatial/color radii 6/10, 12/20, and 20/30, plus an unfiltered control. Canny thresholds stay fixed at 30/70. Hidden RGB is extended before processing; output alpha and dimensions are verified unchanged. No input files were modified.
+
+Visual review found useful eye, beak, and mouth edges, but also false gradient boundaries, especially with stronger filtering. Edge counts alone are not a quality score. Next: review overlays with Sam before choosing region clustering or contour fitting. Browser: assets/kirby/demos/mean-shift/index.html. This is not a final replacement texture or a completed vectorization method.
