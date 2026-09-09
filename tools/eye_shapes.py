@@ -63,6 +63,48 @@ def element(e, fill):
     return f'<ellipse cx="{x:.3f}" cy="{y:.3f}" rx="{w/2:.3f}" ry="{h/2:.3f}" transform="rotate({angle:.3f} {x:.3f} {y:.3f})" fill="{fill}"/>'
 
 
+def eyelid_band(rgb, hsv, left, right, coef, height):
+    blue = (hsv[:, :, 0] >= 90) & (hsv[:, :, 0] <= 125) & (hsv[:, :, 1] > 70) & (hsv[:, :, 2] > 130)
+    samples = []
+    for x in range(int(left), int(right)+1):
+        t = (x-left)/(right-left)
+        bottom = float(coef@[1, t, t*t])
+        y = int(round(bottom))-2
+        search = np.arange(max(0, y-12), min(len(blue), y+5))
+        valid = search[blue[search, x]]
+        if not len(valid):
+            continue
+        y = int(valid[np.argmin(np.abs(valid-y))])
+        upper = y
+        while upper > 0 and blue[upper-1, x] and y-upper < height*.45:
+            upper -= 1
+        thickness = bottom-upper
+        if 3 < thickness < height*.4:
+            samples.append((x, upper, bottom))
+    if len(samples) < 12:
+        return '', None
+    data = np.asarray(samples)
+    # Use the longest continuous run, avoiding unrelated blue regions.
+    runs = np.split(data, np.flatnonzero(np.diff(data[:, 0]) > 3)+1)
+    data = max(runs, key=len)
+    if len(data) < 12:
+        return '', None
+    a, b = left, right
+    t = (data[:, 0]-a)/(b-a)
+    design = np.column_stack((np.ones(len(t)), t, t*t))
+    # A lens-shaped band tapers into the shared endpoints instead of vertical end caps.
+    basis = t*(1-t)
+    thickness = np.clip(data[:, 2]-data[:, 1], 0, height*.4)
+    amplitude = float(np.dot(basis, thickness)/max(np.dot(basis, basis), 1e-9))
+    ta, tb = (a-left)/(right-left), (b-left)/(right-left)
+    lower = np.array([coef@[1, ta, ta*ta], (coef[1]+2*coef[2]*ta)*(tb-ta), coef[2]*(tb-ta)**2])
+    upper = lower+np.array([0, -amplitude, amplitude])
+    d = f'M {a} {upper[0]} Q {(a+b)/2} {upper[0]+upper[1]/2} {b} {upper.sum()} L {b} {lower.sum()} Q {(a+b)/2} {lower[0]+lower[1]/2} {a} {lower[0]} Z'
+    colors = [rgb[int((top+bottom)/2), int(x)] for x, top, bottom in data]
+    color = '#'+''.join(f'{int(c):02x}' for c in np.median(colors, axis=0))
+    return f'<path d="{d}" fill="{color}"/>', dict(path=d, color=color, samples=len(data))
+
+
 def main():
     root = Path(__file__).resolve().parents[1]/'assets/kirby/demos'
     out = root/'truncated-eyes'
@@ -89,6 +131,7 @@ def main():
             continue
         sclera = max(whites, key=np.sum)
         highlights = []
+        sclera_fragments = []
         rejected_highlights = []
         for mask in whites:
             if mask is sclera:
@@ -101,7 +144,11 @@ def main():
                 highlights.append(mask)
             else:
                 rejected_highlights.append(dict(area=size, box_fill=size/box_area))
+                if size > area*.01 and size/box_area < .35:
+                    sclera_fragments.append(mask)
         whole = (pupil | sclera).astype('uint8')
+        for fragment in sclera_fragments:
+            whole |= fragment.astype('uint8')
         whole = cv2.morphologyEx(whole, cv2.MORPH_CLOSE, np.ones((5, 5), 'uint8'))
         # Robust quadratic upper envelope ignores downward detours around highlights.
         xs = np.flatnonzero(whole.any(axis=0))
@@ -128,15 +175,18 @@ def main():
             if len(contour) >= 5:
                 group += element(cv2.fitEllipse(contour), '#ffffff')
         group += '</g>'
+        band, band_info = eyelid_band(rgb, hsv, left, right, coef, height)
+        group += band
         markup.append(group)
-        models.append(dict(component=i, bounds=[x,y,width,height], outer=outer, iris=iris, highlights=len(highlights), rejected_highlights=rejected_highlights, lid_quadratic=coef.tolist(), lid=lid))
+        models.append(dict(component=i, bounds=[x,y,width,height], outer=outer, iris=iris, highlights=len(highlights), rejected_highlights=rejected_highlights, sclera_fragments=len(sclera_fragments), eyelid_band=band_info, lid_quadratic=coef.tolist(), lid=lid))
     header = f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
     shapes = ''.join(markup)
     (out/'shapes.svg').write_text(header+shapes+'</svg>')
     lines = ''.join(f'<path d="{m["lid"]}" fill="none" stroke="#00ff70" stroke-width="2"/>'+element(m['outer'], 'none').replace('fill="none"','fill="none" stroke="#ff1685" stroke-width="1"')+element(m['iris'], 'none').replace('fill="none"','fill="none" stroke="#00ffff" stroke-width="1"') for m in models)
+    lines += ''.join(f'<path d="{m["eyelid_band"]["path"]}" fill="none" stroke="#ffad00" stroke-width="1"/>' for m in models if m['eyelid_band'])
     (out/'overlay.svg').write_text(header+'<image href="../hybrid-contours/mild/input.png" width="512" height="512"/>'+lines+'</svg>')
     (out/'models.json').write_text(json.dumps(models, indent=2))
-    (out/'index.html').write_text('''<!doctype html><meta charset="utf-8"><title>Simple eye shapes</title><style>body{background:#242832;color:white;font:16px system-ui;margin:24px}main{display:grid;grid-template-columns:1fr 1fr;gap:24px}object{width:100%;aspect-ratio:1;background:#587f9c}h2{margin-bottom:8px}</style><h1>Automatic eye-shape proposals</h1><p>Detected from dark regions and adjacent whites. No manually selected eye coordinates. Green: proposed eyelid. Pink: outer ellipse. Cyan: iris ellipse.</p><main><section><h2>Fit over original</h2><object data="overlay.svg" type="image/svg+xml"></object></section><section><h2>Vector shapes only</h2><object data="shapes.svg" type="image/svg+xml"></object></section></main><p>Flat colors expose geometry. Highlights and eyes are layered beneath a quadratic eyelid clip. The mouth and original asset are unchanged. This is a color-based proposal, not a validated general detector; overlap order is assumed.</p>''', encoding='utf-8')
+    (out/'index.html').write_text('''<!doctype html><meta charset="utf-8"><title>Simple eye shapes</title><style>body{background:#242832;color:white;font:16px system-ui;margin:24px}main{display:grid;grid-template-columns:1fr 1fr;gap:24px}object{width:100%;aspect-ratio:1;background:#587f9c}h2{margin-bottom:8px}</style><h1>Automatic eye-shape proposals</h1><p>Detected from dark regions and adjacent whites. No manually selected eye coordinates. Green: proposed eyelid. Pink: outer ellipse. Cyan: iris ellipse. Orange: eyelid outline.</p><main><section><h2>Fit over original</h2><object data="overlay.svg" type="image/svg+xml"></object></section><section><h2>Vector shapes only</h2><object data="shapes.svg" type="image/svg+xml"></object></section></main><p>Flat colors expose geometry. Blue eyelids use two quadratic curves with tapering ends. Their thickness is estimated from the source blue band. Highlights and eyes remain beneath the eyelid clip. The mouth and original asset are unchanged. This is a color-based proposal, not a validated general detector; overlap order is assumed.</p>''', encoding='utf-8')
     assert len(models) > 0
     assert all(np.isfinite(np.asarray(m['lid_quadratic'])).all() for m in models)
     print(json.dumps(models, indent=2))

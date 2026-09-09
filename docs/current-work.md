@@ -127,3 +127,9 @@ Changed eye_shapes.py to exclude points near the proposed eyelid and fit determi
 Rendered overlay inspected: the larger eye and iris fit improve substantially. The smaller eye remains ill-conditioned, with implausible hidden extension. Do not accept it automatically. Only the eyelid is excluded explicitly; other occluders such as the beak are not inferred. Added a synthetic clipped-ellipse check during development. General occluder classification, uncertainty-based rejection, and batch validation remain pending.
 
 Highlight false-positive fix: a thin 104-pixel white edge fragment beside the larger iris was classified as another highlight. Added minimum area and bounding-box fill checks. Each eye now retains one compact highlight; five fragments are rejected. Render inspected with the duplicate blob removed. Eye geometry is unchanged. General highlight classification remains unvalidated.
+
+## Sclera extent and drawn eyelids (2026-09-09)
+
+The thin white fragment rejected as a false highlight still belongs to the sclera evidence. Significant thin fragments now contribute to the outer-eye mask, improving its left extent. The fragment remains excluded from highlights.
+
+Added blue eyelid bands using two quadratic curves with shared tapering endpoints. Thickness and flat color come from nearby blue source pixels. Both bands generated; one highlight per eye remains. Render inspected. The mouth and source image remain unchanged. The smaller ellipse remains unstable, and the lens-shaped eyelid assumption still needs visual review and validation on other assets.
