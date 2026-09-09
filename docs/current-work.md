@@ -167,3 +167,9 @@ The fit still initializes from the earlier radial-sector objective. Current band
 Reviewed both eye overlays enlarged with Inkscape exports and image viewer. The prior direct joins had not repaired the oversized white patch: the inner ellipse was too small and the white band covered the iris. Added independent ellipse fits to the left/right boundaries of the connected white island. This improves the larger eye's inner edge. The smaller eye refit is visibly worse; a pixel-overlap comparison retains its previous paired-arc candidate automatically.
 
 Added enlarged eye overlays to the comparison page. Refit and previous-band IoUs are recorded separately. Both final enlarged overlays inspected. Larger-eye endpoint cuts still miss some white near the beak; smaller-eye tips and thin boundary remain imperfect. This is an improvement, not a complete fidelity fix. Three existing sector tests pass; the row-based arc fitter is not validated on other assets or nonvertical bands.
+
+## Return to raster baseline (2026-09-09)
+
+Sam stopped vector reconstruction and requested the previous raster work. Added tools/raster_review.py and demos/raster-review/, linking the saved Dedede StarSample snapshot plus ten chaiNNer batch results against native originals. No processing, chain settings, or source images changed. All 11 source/output pairs exist. Vector experiments remain references, not the active path.
+
+Active direction: raster upscaling with Separate Alpha and GIMP Mean Curvature Blur/downscale. Keep actual saved chain settings unless Sam changes them. Reshading remains a possible later raster operation, with existing silhouettes and alpha preserved; no reshading implementation or new processing is authorized by this handoff alone.
