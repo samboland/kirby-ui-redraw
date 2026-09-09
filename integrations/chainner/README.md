@@ -27,3 +27,8 @@ The installer copies only this node and backs up a differing prior copy. An opti
 Restart is left to the user so an unsaved chain is not interrupted.
 
 Reference: https://gegl.org/operations/gegl-mean-curvature-blur.html
+
+## Restore Grain from Reference
+Search Image Filter > Correction for Restore Grain from Reference after saving and restarting chaiNNer. Connect the final upscaled image to Image and the untouched original to Reference Image. Place after blur and final resize. Alpha is preserved exactly. Texture Mask is a grayscale diagnostic output.
+Strength defaults to 60%; Grain Size is in output pixels (default 1.5). Sensitivity increases mask coverage. Edge Protection suppresses coherent edges. Seed makes output repeatable. Three noise scales use locally estimated source amplitudes. Noise is shared across RGB channels to avoid colored speckles. This estimates texture statistically, not semantically: compression can trigger it. Transparent boundaries are excluded. Tiling and animation continuity are not guaranteed. Test before applying broadly.
+
