@@ -89,3 +89,15 @@ Current output: 48 initial endpoints; 24 interior repair proposals and 13 crop c
 Outputs at assets/kirby/demos/region-graph include graph.json, region-labels.npy, repaired line art, numbered regions, and a simplified shared-arc SVG. Junctions remain fixed during polyline simplification. Curve fitting and validation of vector-region topology remain pending; the filled regions currently use raster flood fill, not the simplified SVG.
 
 Validation: all skeleton pixels remain present after repair; labels never extend outside alpha; region areas sum to the available interior. Visually checked overlays and regions; some unresolved gaps, tiny slivers, and ambiguous junctions remain. No shading reconstruction was attempted. Get Sam's region review before gradient representation or deformation.
+
+## Automatic curve simplification (2026-09-08)
+
+Sam explicitly rejected manual path editing. The intended engine processes every asset automatically, with strong preference for simple geometry.
+
+Added tools/bezier_graph.py and tools/simplify_curves.py. Run them in that order with Python providing NumPy, Pillow, and SciPy, after region_graph.py. The current experiment uses Dedede only. The earlier editor is abandoned and is not part of the pipeline.
+
+The extractor suppresses diagonal pixel shortcuts and fits a shared graph. Simplification dissolves degree-two vertices, samples by distance, smooths coordinates, and fits fewer cubic segments. Shared junctions remain fixed. No hand edits, AI calls, or shading changes occur.
+
+Comparison: demos/simple-curves/. Control: 376 cubics. Simple: 232; simpler: 187; minimal: 171. All variants have 156 paths. Maximum sampled displacement from control is 2.08, 5.36, and 10.50 pixels respectively on the 512-pixel canvas. These are measured deviations, not guaranteed error bounds.
+
+Validation: finite coordinates, fixed endpoints, and continuous segment joins passed for all variants. SVG rendering passed; strongest output visually inspected. Strong simplification removes mouth bumps but also changes eye curves and rounds crop corners. Incorrect connections remain. Crossings, region preservation, other assets, and automatic strength selection are not validated. Next: review simplification strength, then implement topology cleanup and candidate rejection before batch use.
